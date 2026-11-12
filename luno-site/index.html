@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Luno</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Luno, l'espace de travail du lycée : calendrier des DST, cours, flashcards, fiches de révision et exercices.">
+<link rel="icon" href="icone.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Outfit:wght@300..700&display=swap">
+<style>
+/* Mise en page : une lune géante dont la phase suit le défilement, puis des bandes
+   larges où l'on essaie Luno (téléphone à onglets, carte qui se retourne, curseur de fiche). */
+@font-face { font-family: "Fraunces Variable"; src: url("fonts/fraunces-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fraunces Variable"; src: url("fonts/fraunces-latin-wght-italic.woff2") format("woff2"); font-weight: 100 900; font-style: italic; font-display: swap; }
+@font-face { font-family: "Outfit Variable"; src: url("fonts/outfit-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Caveat Variable"; src: url("fonts/caveat-latin-wght-normal.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+
+:root {
+  /* Thème clair « Blush graphique » */
+  --bg: #f8f1ee;
+  --bg-2: #f3e6e0;
+  --surface: #ffffff;
+  --ink: #2a2a2d;
+  --muted: #6b6164;
+  --line: #ecdcd6;
+  --accent: #9f4830;
+  --accent-soft: #f3dcd5;
+  --on-accent: #ffffff;
+  --blush: #e6bfb5;
+  --copper: #c98b6b;
+  --copper-grad: linear-gradient(120deg, #a8674a, #e0a887 45%, #b9775a);
+  --ombre: #2a2a2d;
+  --surligneur: #f6dc7c;
+  --ok: #2b7a67;
+  --bad: #b83a30;
+  --shadow-rgb: 185 122 92;
+  --halo: 0.35;
+  --poussiere: 0.5;
+  --font-display: "Fraunces Variable", "Fraunces", Georgia, serif;
+  --font-sans: "Outfit Variable", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Caveat Variable", "Caveat", "Segoe Script", cursive;
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --shadow-card: 0 1px 2px rgb(var(--shadow-rgb) / 0.06), 0 14px 30px -22px rgb(var(--shadow-rgb) / 0.55);
+  --shadow-pop: 0 2px 4px rgb(var(--shadow-rgb) / 0.08), 0 30px 60px -28px rgb(var(--shadow-rgb) / 0.75);
+}
+/* Thème sombre « Nuit cuivrée » */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #242426; --bg-2: #1e1e20; --surface: #2f2f32; --ink: #f4e7e2; --muted: #b3a6a2; --line: #414145;
+    --accent: #dba283; --accent-soft: #4a3b35; --on-accent: #242426; --blush: #3d3d41; --copper: #dba283;
+    --copper-grad: linear-gradient(120deg, #c98b6b, #f3cdb6 45%, #d19a7b);
+    --ombre: #242426; --surligneur: #8a6d22; --ok: #5fc0a8; --bad: #ef8a78; --shadow-rgb: 0 0 0;
+    --halo: 0.5; --poussiere: 0.9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #242426; --bg-2: #1e1e20; --surface: #2f2f32; --ink: #f4e7e2; --muted: #b3a6a2; --line: #414145;
+  --accent: #dba283; --accent-soft: #4a3b35; --on-accent: #242426; --blush: #3d3d41; --copper: #dba283;
+  --copper-grad: linear-gradient(120deg, #c98b6b, #f3cdb6 45%, #d19a7b);
+  --ombre: #242426; --surligneur: #8a6d22; --ok: #5fc0a8; --bad: #ef8a78; --shadow-rgb: 0 0 0;
+  --halo: 0.5; --poussiere: 0.9; color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-sans); font-size: 17px; line-height: 1.6; font-weight: 350;
+  overflow-x: clip; -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.015em; line-height: 1.08; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+::selection { background: var(--accent); color: var(--on-accent); }
+mark { background: linear-gradient(transparent 12%, var(--surligneur) 12% 88%, transparent 88%); color: inherit; padding: 0 .12em; border-radius: 3px; }
+
+.cadre { max-width: 1180px; margin-inline: auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.surtitre { font-size: 12.5px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+.main { font-family: var(--font-hand); font-weight: 500; }
+.cuivre { background: var(--copper-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+em.it { font-style: italic; }
+
+/* Boutons */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px; text-decoration: none;
+  padding: 14px 24px; border-radius: 999px; font-weight: 500; font-size: 16px; white-space: nowrap;
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease), background-color .3s;
+  will-change: transform;
+}
+.btn svg { width: 18px; height: 18px; transition: transform .35s var(--ease); }
+.btn:hover svg { transform: translateX(4px); }
+.btn-plein { background: var(--ink); color: var(--bg); box-shadow: var(--shadow-pop); }
+.btn-plein:hover { box-shadow: 0 2px 4px rgb(var(--shadow-rgb) / .1), 0 34px 60px -24px rgb(var(--shadow-rgb) / .9); }
+.btn-trait { border: 1.5px solid var(--line); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.btn-trait:hover { border-color: var(--copper); }
+
+/* Barre du haut */
+.haut { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid transparent; transition: border-color .3s; }
+.haut.colle { border-bottom-color: var(--line); }
+.haut .cadre { display: flex; align-items: center; gap: 18px; height: 68px; }
+.logo { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; font-family: var(--font-display); font-size: 25px; font-weight: 500; letter-spacing: -0.02em; }
+.logo-lune { position: relative; width: 30px; height: 30px; flex: none; transform: rotate(calc(var(--tour, 0) * 360deg)); }
+.logo-lune i { position: absolute; border-radius: 50%; }
+.logo-lune i:first-child { inset: 3px 0 0 5px; background: var(--copper-grad); }
+.logo-lune i:last-child { inset: 0 6px 5px 0; background: var(--ombre); box-shadow: 0 0 0 1.5px var(--bg); }
+.haut nav { display: flex; gap: 4px; margin-left: auto; }
+.haut nav a { text-decoration: none; font-size: 14.5px; letter-spacing: .03em; color: var(--muted); padding: 8px 13px; border-radius: 10px; transition: color .25s, background-color .25s; }
+.haut nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--blush) 45%, transparent); }
+.rond { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line); background: var(--surface); transition: transform .4s var(--ease), border-color .3s; flex: none; }
+.rond:hover { transform: rotate(-18deg) scale(1.06); border-color: var(--copper); }
+.rond svg { width: 19px; height: 19px; }
+.haut .btn { padding: 10px 18px; font-size: 14.5px; box-shadow: none; }
+@media (max-width: 860px) { .haut nav { display: none; } .haut .rond { margin-left: auto; } }
+@media (max-width: 420px) { .haut .btn span { display: none; } .haut .btn { padding: 12px; } .haut .btn svg { transform: none; } }
+
+/* Ouverture */
+.hero { position: relative; overflow: clip; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hero .cadre { position: relative; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); align-items: center; gap: 32px; padding-block: clamp(48px, 8vw, 104px) clamp(56px, 8vw, 110px); }
+.hero h1 { font-size: clamp(46px, 7.4vw, 104px); letter-spacing: -0.035em; line-height: .98; margin-top: 22px; }
+.hero h1 .ligne { display: block; overflow: hidden; padding-bottom: .12em; margin-bottom: -.12em; }
+.hero h1 .ligne > span { display: inline-block; animation: monte 1s var(--ease) both; }
+.hero h1 .ligne:nth-child(2) > span { animation-delay: .1s; }
+.hero h1 .ligne:nth-child(3) > span { animation-delay: .2s; }
+@keyframes monte { from { transform: translate3d(0, 105%, 0) rotate(3deg); } to { transform: none; } }
+.hero .chapo { margin-top: 26px; max-width: 34em; font-size: clamp(17px, 1.6vw, 20px); color: var(--muted); animation: fondu 1s .45s both; }
+.hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; animation: fondu 1s .6s both; }
+.hero .note { margin-top: 26px; font-size: 25px; color: var(--accent); transform: rotate(-2.5deg); transform-origin: left; display: inline-flex; gap: 8px; align-items: center; animation: fondu 1s .8s both; }
+.hero .note svg { width: 38px; height: 26px; flex: none; }
+@keyframes fondu { from { opacity: 0; transform: translate3d(0, 14px, 0); } }
+.hero .note { animation-name: fondu-note; }
+@keyframes fondu-note { from { opacity: 0; } }
+
+.ciel { position: relative; justify-self: center; width: min(100%, 470px); aspect-ratio: 1; animation: fondu-note 1.4s .2s both; }
+.halo { position: absolute; inset: -18%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--copper) 70%, transparent), transparent 72%); opacity: var(--halo); animation: respire 7s ease-in-out infinite; }
+@keyframes respire { 50% { transform: scale(1.07); opacity: calc(var(--halo) * 1.35); } }
+.astre, .ombre { position: absolute; inset: 14%; border-radius: 50%; will-change: transform; }
+.astre { background: var(--copper-grad); box-shadow: inset -18px -22px 60px rgb(0 0 0 / .14); transform: translate3d(calc(var(--mx, 0) * -10px), calc(var(--my, 0) * -10px), 0); }
+.astre::before, .astre::after { content: ""; position: absolute; border-radius: 50%; background: rgb(0 0 0 / .07); }
+.astre::before { width: 16%; height: 16%; left: 58%; top: 24%; }
+.astre::after { width: 9%; height: 9%; left: 70%; top: 56%; }
+.ombre { background: var(--ombre); transform: translate3d(calc(var(--ox, -26) * 1% + var(--mx, 0) * 14px), calc(var(--oy, -15) * 1% + var(--my, 0) * 14px), 0); transition: background-color .5s; }
+.orbite { position: absolute; inset: 0; border-radius: 50%; border: 1px dashed color-mix(in srgb, var(--copper) 45%, transparent); animation: tourne 46s linear infinite; }
+.orbite.o2 { inset: -9%; animation-duration: 70s; animation-direction: reverse; border-style: solid; border-color: color-mix(in srgb, var(--copper) 18%, transparent); }
+.orbite b { position: absolute; top: 50%; left: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--copper); }
+.orbite.o2 b { left: auto; right: -4px; top: 30%; width: 7px; height: 7px; background: var(--accent); }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.etiquette { position: absolute; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 11px 15px; box-shadow: var(--shadow-pop); font-size: 14px; line-height: 1.3; animation: flotte 6s ease-in-out infinite; }
+.etiquette small { display: block; color: var(--muted); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+.etiquette strong { font-family: var(--font-display); font-weight: 500; font-size: 18px; }
+.etiquette.e1 { left: -4%; bottom: 12%; }
+.etiquette.e2 { right: -3%; top: 9%; animation-delay: -3s; }
+@keyframes flotte { 50% { transform: translate3d(0, -10px, 0); } }
+@media (max-width: 860px) {
+  .hero .cadre { grid-template-columns: minmax(0, 1fr); }
+  .ciel { order: -1; width: min(72%, 300px); margin-bottom: 8px; }
+  .etiquette { font-size: 12.5px; padding: 8px 12px; } .etiquette strong { font-size: 15px; }
+  .etiquette.e1 { left: -18%; } .etiquette.e2 { right: -18%; }
+}
+
+/* Bandeau qui défile */
+.defile { border-block: 1px solid var(--line); background: var(--bg-2); overflow: hidden; padding-block: 18px; }
+.defile div { display: flex; gap: 44px; width: max-content; animation: glisse 38s linear infinite; font-family: var(--font-display); font-size: clamp(20px, 2.4vw, 30px); font-style: italic; white-space: nowrap; }
+.defile:hover div { animation-play-state: paused; }
+.defile span { display: inline-flex; align-items: center; gap: 44px; }
+.defile span::after { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--copper-grad); }
+@keyframes glisse { to { transform: translate3d(-50%, 0, 0); } }
+
+/* Sections */
+section { padding-block: clamp(72px, 10vw, 136px); }
+.tete { max-width: 760px; margin-bottom: clamp(36px, 5vw, 64px); }
+.tete h2 { font-size: clamp(34px, 5vw, 62px); margin-top: 16px; letter-spacing: -0.028em; }
+.tete p { margin-top: 18px; color: var(--muted); font-size: 18.5px; max-width: 36em; }
+.js .rev { opacity: .3; transform: translate3d(0, 30px, 0); transition: opacity .9s var(--ease), transform .9s var(--ease); transition-delay: calc(var(--i, 0) * 90ms); }
+.js .rev.vu { opacity: 1; transform: none; }
+
+/* Les six onglets */
+.onglets { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: clamp(28px, 6vw, 88px); align-items: center; }
+.liste { display: grid; gap: 4px; }
+.liste button { text-align: left; display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 4px 16px; padding: 17px 18px; border-radius: 18px; position: relative; transition: background-color .35s, transform .35s var(--ease); }
+.liste button:hover { transform: translate3d(5px, 0, 0); }
+.liste button[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-card); }
+.liste .ico { grid-row: span 2; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); transition: background .35s, color .35s; }
+.liste button[aria-selected="true"] .ico { background: var(--copper-grad); color: #fff; }
+.liste .ico svg { width: 22px; height: 22px; }
+.liste h3 { font-size: 22px; align-self: end; }
+.liste p { color: var(--muted); font-size: 15.5px; line-height: 1.45; display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .45s var(--ease), opacity .35s; }
+.liste p > span { overflow: hidden; min-height: 0; }
+.liste button[aria-selected="true"] p { grid-template-rows: 1fr; opacity: 1; }
+.liste .jauge { position: absolute; left: 18px; right: 18px; bottom: 6px; height: 2px; border-radius: 2px; background: var(--copper-grad); transform: scaleX(0); transform-origin: left; }
+.auto .liste button[aria-selected="true"] .jauge { animation: jauge 4.5s linear both; }
+@keyframes jauge { to { transform: scaleX(1); } }
+
+.tel { position: relative; width: 100%; max-width: 340px; justify-self: center; aspect-ratio: 340 / 690; border-radius: 52px; padding: 11px; background: var(--ombre); box-shadow: var(--shadow-pop), 0 0 0 1.5px color-mix(in srgb, var(--copper) 55%, transparent); transform: perspective(1400px) rotateY(calc(var(--ry, 0) * 1deg)) rotateX(calc(var(--rx, 0) * 1deg)); transition: transform .5s var(--ease); }
+.tel::before { content: ""; position: absolute; top: 22px; left: 50%; width: 84px; height: 24px; margin-left: -42px; border-radius: 20px; background: var(--ombre); z-index: 3; }
+.ecran-zone { position: relative; height: 100%; border-radius: 42px; overflow: hidden; background: var(--bg); }
+.ecran { position: absolute; inset: 0; padding: 58px 16px 84px; display: flex; flex-direction: column; gap: 11px; opacity: 0; transform: translate3d(22px, 0, 0); transition: opacity .4s, transform .55s var(--ease); pointer-events: none; font-size: 13px; line-height: 1.4; }
+.ecran.actif { opacity: 1; transform: none; }
+.ecran h4 { font-family: var(--font-display); font-weight: 500; font-size: 25px; margin: 0 0 2px; letter-spacing: -.02em; }
+.ecran .st { font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+.carte { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 13px 14px; box-shadow: var(--shadow-card); }
+.carte.nuit { background: #2a2a2d; color: #f4e7e2; border-color: transparent; }
+.carte.nuit .st { color: #dba283; }
+.carte b { font-weight: 500; }
+.carte .gros { font-family: var(--font-display); font-size: 19px; line-height: 1.15; display: block; margin: 3px 0; }
+.puce { display: inline-block; font-size: 10.5px; padding: 3px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.carte.nuit .puce { background: #dba283; color: #242426; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.duo .carte { padding: 11px 12px; }
+.chiffre { font-family: var(--font-display); font-size: 27px; line-height: 1; display: block; }
+.mois { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; }
+.mois i { font-style: normal; color: var(--muted); font-size: 9px; padding-bottom: 3px; }
+.mois span { aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; position: relative; }
+.mois .dst::after { content: ""; position: absolute; bottom: 2px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.mois .jour { background: var(--ink); color: var(--bg); }
+.mois .jour.dst::after { background: var(--copper); }
+.ligne-l { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.ligne-l:last-child { border: 0; padding-bottom: 0; } .ligne-l:first-child { padding-top: 0; }
+.ligne-l small { margin-left: auto; color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+.coche { width: 17px; height: 17px; border-radius: 6px; border: 1.5px solid var(--copper); flex: none; display: grid; place-items: center; }
+.coche.ok { background: var(--copper-grad); border-color: transparent; }
+.coche.ok::after { content: ""; width: 8px; height: 4px; border-left: 1.5px solid #fff; border-bottom: 1.5px solid #fff; transform: rotate(-45deg) translate(1px, -1px); }
+.fait { text-decoration: line-through; color: var(--muted); }
+.mat { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: color-mix(in srgb, var(--c) 16%, var(--surface)); }
+.mat u { text-decoration: none; font-size: 19px; line-height: 1; }
+.mat small { color: var(--muted); font-size: 10.5px; }
+.barre-p { height: 5px; border-radius: 9px; background: var(--line); overflow: hidden; }
+.barre-p i { display: block; height: 100%; border-radius: 9px; background: var(--copper-grad); }
+.choix { border: 1px solid var(--line); border-radius: 12px; padding: 8px 11px; background: var(--surface); }
+.choix.bon { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, var(--surface)); }
+.barre-bas { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 60px; border-radius: 26px; background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; padding: 0 6px; z-index: 2; }
+.barre-bas button { height: 44px; display: grid; place-items: center; color: var(--muted); position: relative; z-index: 1; transition: color .3s; border-radius: 16px; }
+.barre-bas button[aria-selected="true"] { color: #fff; }
+.barre-bas svg { width: 19px; height: 19px; }
+.pastille { position: absolute; left: 6px; top: 8px; height: 44px; width: calc((100% - 12px) / 6); border-radius: 16px; background: var(--copper-grad); transform: translate3d(calc(var(--n, 0) * 100%), 0, 0); transition: transform .55s var(--ease); }
+@media (max-width: 860px) { .onglets { grid-template-columns: minmax(0, 1fr); } .tel { order: -1; max-width: 300px; } }
+
+/* Essaie */
+.essaie { background: var(--bg-2); border-block: 1px solid var(--line); }
+.banc { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; }
+.bloc { background: var(--surface); border: 1px solid var(--line); border-radius: 28px; padding: clamp(20px, 3vw, 32px); box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.bloc h3 { font-size: 27px; }
+.bloc > p { color: var(--muted); font-size: 15.5px; }
+.b-carte { grid-column: span 5; } .b-fiche { grid-column: span 7; } .b-qcm { grid-column: span 7; } .b-formule { grid-column: span 5; }
+@media (max-width: 900px) { .banc > .bloc { grid-column: 1 / -1; } }
+
+.flip { perspective: 1400px; margin-top: auto; }
+.flip-in { position: relative; width: 100%; min-height: 230px; display: block; text-align: center; transform-style: preserve-3d; transition: transform .8s var(--ease); border-radius: 22px; }
+.flip-in.verso { transform: rotateY(180deg); }
+.flip-in.part { transition: transform .45s ease-in, opacity .45s; transform: translate3d(var(--dx, 60px), -20px, 0) rotate(var(--dr, 8deg)); opacity: 0; }
+.face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 22px; display: grid; place-content: center; gap: 10px; padding: 24px; }
+.face.r { background: var(--ombre); color: #f4e7e2; }
+.face.r strong { font-family: var(--font-display); font-weight: 500; font-size: clamp(25px, 3vw, 33px); line-height: 1.1; }
+.face.r small { color: #dba283; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; font-weight: 600; }
+.face.r em { font-family: var(--font-hand); font-style: normal; font-size: 21px; color: #dba283; }
+.face.v { background: var(--accent-soft); transform: rotateY(180deg); font-size: 16.5px; line-height: 1.45; }
+.rangee { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pt { padding: 10px 18px; border-radius: 999px; font-size: 14.5px; font-weight: 500; border: 1.5px solid var(--line); background: var(--surface); transition: transform .3s var(--ease), border-color .3s, background-color .3s, color .3s; }
+.pt:hover { transform: translate3d(0, -2px, 0); border-color: var(--copper); }
+.pt.oui { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.info { font-size: 14px; color: var(--muted); margin-left: auto; }
+
+.curseur { display: grid; gap: 6px; }
+.curseur .lbl { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; color: var(--muted); }
+.curseur .lbl b { font-family: var(--font-hand); font-size: 24px; font-weight: 600; color: var(--accent); }
+input[type="range"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 8px; margin: 10px 0; border-radius: 999px; background: linear-gradient(to right, var(--accent) var(--fill, 50%), var(--line) var(--fill, 50%)); cursor: pointer; touch-action: pan-y; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); box-shadow: 0 2px 8px rgb(var(--shadow-rgb) / .4); transition: transform .18s var(--ease), box-shadow .18s; }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.16); box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent); }
+input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); }
+.fiche { display: grid; }
+.fiche h4 { font-family: var(--font-display); font-weight: 500; font-size: 19px; margin: 12px 0 4px; }
+.pli { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .4s var(--ease), opacity .3s; }
+.pli > div { min-height: 0; overflow: hidden; }
+.pli p { padding: 5px 0 5px 20px; position: relative; font-size: 15.5px; line-height: 1.5; }
+.pli p::before { content: ""; position: absolute; left: 3px; top: .82em; width: 6px; height: 6px; border-radius: 50%; background: var(--copper); }
+.pli.ferme { grid-template-rows: 0fr; opacity: 0; }
+
+.q { font-family: var(--font-display); font-size: clamp(21px, 2.4vw, 26px); line-height: 1.2; }
+.reps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.reps button { text-align: left; padding: 14px 16px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--bg); font-size: 15.5px; transition: transform .3s var(--ease), border-color .3s, background-color .3s, color .3s; }
+.reps button:hover:not(:disabled) { transform: translate3d(0, -3px, 0); border-color: var(--copper); }
+.reps button.juste { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 11%, var(--surface)); color: var(--ok); }
+.reps button.faux { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, var(--surface)); color: var(--bad); animation: non .4s; }
+.reps button:disabled { cursor: default; }
+@keyframes non { 25% { transform: translate3d(-6px, 0, 0); } 75% { transform: translate3d(6px, 0, 0); } }
+@media (max-width: 520px) { .reps { grid-template-columns: minmax(0, 1fr); } }
+.retour { font-size: 15px; min-height: 3.2em; color: var(--muted); }
+.retour b { color: var(--ink); font-weight: 500; }
+
+.champ { width: 100%; font: inherit; font-size: 17px; padding: 13px 16px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); }
+.champ:focus { outline: none; border-color: var(--accent); }
+.apercu { min-height: 92px; display: grid; place-items: center; border-radius: 16px; border: 1.5px dashed var(--line); font-family: var(--font-display); font-size: 27px; padding: 12px; overflow-x: auto; }
+.frac { display: inline-flex; flex-direction: column; text-align: center; vertical-align: middle; margin: 0 .2em; line-height: 1.15; }
+.frac > span:first-child { border-bottom: 1.5px solid currentColor; padding: 0 .3em .06em; }
+.frac > span:last-child { padding: .06em .3em 0; }
+.touches { display: flex; flex-wrap: wrap; gap: 6px; }
+.touches button { min-width: 40px; height: 40px; padding: 0 10px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; transition: transform .2s var(--ease), border-color .2s; }
+.touches button:hover { transform: translate3d(0, -2px, 0); border-color: var(--copper); }
+.touches button:active { transform: scale(.92); }
+
+/* Chiffres */
+.chiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.chiffres div { padding: 30px 22px 6px 0; border-right: 1px solid var(--line); margin-right: 22px; }
+.chiffres div:last-child { border: 0; margin: 0; }
+.chiffres strong { display: block; font-family: var(--font-display); font-weight: 400; font-size: clamp(52px, 7.5vw, 104px); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.chiffres span { display: block; margin-top: 10px; color: var(--muted); font-size: 15.5px; max-width: 15em; }
+@media (max-width: 760px) { .chiffres { grid-template-columns: repeat(2, minmax(0, 1fr)); } .chiffres div:nth-child(2) { border: 0; margin: 0; } .chiffres div { padding-bottom: 26px; } }
+
+/* Comment ça marche */
+.etapes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; counter-reset: e; position: relative; }
+.etape { counter-increment: e; padding: 28px 26px 30px; border-radius: 28px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-card); display: grid; gap: 12px; align-content: start; transition: transform .5s var(--ease), box-shadow .5s; }
+.etape:hover { transform: translate3d(0, -8px, 0); box-shadow: var(--shadow-pop); }
+.etape::before { content: counter(e); font-family: var(--font-display); font-style: italic; font-size: 74px; line-height: .9; background: var(--copper-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.etape h3 { font-size: 25px; }
+.etape p { color: var(--muted); font-size: 16px; }
+.etape .main { font-size: 22px; color: var(--accent); transform: rotate(-1.5deg); }
+@media (max-width: 860px) { .etapes { grid-template-columns: minmax(0, 1fr); } }
+.sans-ia { margin-top: 20px; border-radius: 28px; background: var(--ombre); color: #f4e7e2; padding: clamp(26px, 4vw, 46px); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; align-items: center; border: 1px solid var(--line); }
+.sans-ia h3 { font-size: clamp(27px, 3.4vw, 40px); }
+.sans-ia p { color: #b3a6a2; font-size: 16.5px; }
+.sans-ia ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 15.5px; }
+.sans-ia li { display: flex; gap: 12px; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid #414145; }
+.sans-ia li:last-child { border: 0; padding: 0; }
+.sans-ia li b { font-weight: 500; color: #dba283; min-width: 7.2em; }
+@media (max-width: 760px) { .sans-ia { grid-template-columns: minmax(0, 1fr); } }
+
+/* Deux thèmes */
+.themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.theme { position: relative; text-align: left; border-radius: 28px; padding: 28px; min-height: 300px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; overflow: hidden; border: 1.5px solid var(--line); transition: transform .5s var(--ease), border-color .3s; }
+.theme:hover { transform: translate3d(0, -6px, 0) scale(1.01); }
+.theme[aria-pressed="true"] { border-color: var(--copper); }
+.theme.clair { background: #f8f1ee; color: #2a2a2d; }
+.theme.sombre { background: #242426; color: #f4e7e2; }
+.theme .mini { position: absolute; top: 26px; right: 26px; width: 120px; height: 120px; transition: transform .8s var(--ease); }
+.theme:hover .mini { transform: rotate(40deg) scale(1.08); }
+.theme .mini i { position: absolute; border-radius: 50%; }
+.theme .mini i:first-child { inset: 12% 0 0 16%; background: linear-gradient(120deg, #a8674a, #e0a887 45%, #b9775a); }
+.theme.clair .mini i:last-child { inset: 0 20% 16% 0; background: #2a2a2d; }
+.theme.sombre .mini i:last-child { inset: 0 20% 16% 0; background: #242426; }
+.theme .pal { display: flex; gap: 6px; margin-bottom: 14px; }
+.theme .pal i { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgb(128 128 128 / .25); }
+.theme h3 { font-size: 34px; }
+.theme p { font-size: 15.5px; opacity: .72; }
+.theme .etat { font-family: var(--font-hand); font-size: 22px; color: #c98b6b; height: 1.2em; }
+@media (max-width: 700px) { .themes { grid-template-columns: minmax(0, 1fr); } .theme { min-height: 250px; } }
+
+/* Technique */
+.tech { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 6vw, 80px); align-items: start; }
+.tech .tete { margin: 0; }
+.pile { display: grid; }
+.pile div { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr); gap: 16px; padding: 17px 0; border-top: 1px solid var(--line); transition: padding .4s var(--ease); }
+.pile div:hover { padding-left: 10px; }
+.pile div:last-child { border-bottom: 1px solid var(--line); }
+.pile dt { font-family: var(--font-display); font-size: 20px; }
+.pile dd { margin: 0; color: var(--muted); font-size: 15.5px; }
+@media (max-width: 860px) { .tech { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .pile div { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* Fin */
+.fin { text-align: center; position: relative; overflow: clip; }
+.fin h2 { font-size: clamp(44px, 9vw, 132px); letter-spacing: -.045em; line-height: .95; }
+.fin p { margin: 24px auto 34px; color: var(--muted); max-width: 30em; font-size: 18.5px; }
+.fin .actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.fin .lune-fin { position: absolute; left: 50%; bottom: -34vw; width: 62vw; aspect-ratio: 1; margin-left: -31vw; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--copper) 55%, transparent), transparent 70%); opacity: calc(var(--halo) * .8); pointer-events: none; }
+.fin .cadre { position: relative; }
+footer { border-top: 1px solid var(--line); padding-block: 26px calc(26px + env(safe-area-inset-bottom, 0px)); font-size: 14.5px; color: var(--muted); }
+footer .cadre { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
+footer .logo { font-size: 20px; color: var(--ink); margin-right: auto; }
+footer .logo-lune { width: 22px; height: 22px; transform: none; }
+
+/* Changement de thème : le nouveau thème s'ouvre en cercle depuis le bouton. */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .js .rev { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="haut" id="haut">
+  <div class="cadre">
+    <a class="logo" href="#haut" aria-label="Luno, haut de la page"><span class="logo-lune" aria-hidden="true"><i></i><i></i></span>Luno</a>
+    <nav aria-label="Sections">
+      <a href="#onglets">Les onglets</a>
+      <a href="#essaie">Essayer</a>
+      <a href="#methode">Comment ça marche</a>
+      <a href="#themes">Thèmes</a>
+      <a href="#technique">Sous le capot</a>
+    </nav>
+    <button class="rond" id="bascule" type="button" aria-label="Changer de thème" title="Changer de thème">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+    <a class="btn btn-plein" href="https://pe4kk.github.io/project-luno/" target="_blank" rel="noopener"><span>Ouvrir Luno</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <canvas id="poussiere" aria-hidden="true"></canvas>
+  <div class="cadre">
+    <div>
+      <p class="surtitre">L'espace de travail du lycée</p>
+      <h1>
+        <span class="ligne"><span>Tes cours,</span></span>
+        <span class="ligne"><span>tes DST,</span></span>
+        <span class="ligne"><span><em class="it cuivre">tes révisions.</em></span></span>
+      </h1>
+      <p class="chapo">Luno réunit le calendrier de tes devoirs sur table, tes cours, des flashcards, des fiches dont tu règles la longueur et des exercices corrigés. Sur ton téléphone comme sur ton ordinateur.</p>
+      <div class="actions">
+        <a class="btn btn-plein aimant" href="https://pe4kk.github.io/project-luno/" target="_blank" rel="noopener">Ouvrir Luno
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        <a class="btn btn-trait aimant" href="#essaie">Essayer ici</a>
+      </div>
+      <p class="note main">
+        <svg viewBox="0 0 40 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 22C10 24 24 20 34 6M26 5l9 0-2 9"/></svg>
+        fais défiler, la lune change de phase
+      </p>
+    </div>
+    <div class="ciel" id="ciel" aria-hidden="true">
+      <div class="halo"></div>
+      <div class="orbite o2"><b></b></div>
+      <div class="orbite"><b></b></div>
+      <div class="astre"></div>
+      <div class="ombre"></div>
+      <div class="etiquette e1"><small>Prochain DST</small><strong>Physique-Chimie</strong><br>dans 4 jours</div>
+      <div class="etiquette e2"><small>Aujourd'hui</small><strong>12 cartes</strong> à revoir</div>
+    </div>
+  </div>
+</div>
+
+<div class="defile" aria-hidden="true">
+  <div>
+    <span>Calendrier des DST</span><span>Flashcards</span><span>Fiches à cinq tailles</span><span>Interro blanche</span><span>Leçons guidées</span><span>Mes erreurs</span><span>Brouillon et calculatrice</span><span>Synchronisation</span>
+    <span>Calendrier des DST</span><span>Flashcards</span><span>Fiches à cinq tailles</span><span>Interro blanche</span><span>Leçons guidées</span><span>Mes erreurs</span><span>Brouillon et calculatrice</span><span>Synchronisation</span>
+  </div>
+</div>
+
+<section id="onglets">
+  <div class="cadre">
+    <div class="tete rev">
+      <p class="surtitre">Six onglets</p>
+      <h2>Tout ce qu'il te faut entre le cours et la copie.</h2>
+      <p>Chaque onglet répond à une question de ta semaine. Touche-les pour voir l'écran correspondant.</p>
+    </div>
+    <div class="onglets auto" id="demo-onglets">
+      <div class="liste rev" role="tablist" aria-label="Onglets de Luno">
+        <button role="tab" aria-selected="true" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg></span>
+          <h3>Accueil</h3><p><span>Ton prochain DST, les chapitres au programme et les cartes à revoir aujourd'hui.</span></p><i class="jauge"></i>
+        </button>
+        <button role="tab" aria-selected="false" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+          <h3>Calendrier</h3><p><span>Tous les DST de l'année, reliés aux chapitres à réviser pour chacun.</span></p><i class="jauge"></i>
+        </button>
+        <button role="tab" aria-selected="false" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span>
+          <h3>À faire</h3><p><span>Tes tâches, avec une échéance si tu veux. Colle une liste, elle se range toute seule.</span></p><i class="jauge"></i>
+        </button>
+        <button role="tab" aria-selected="false" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2-1.5-5-2-8-2v14c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2ZM12 6v14"/></svg></span>
+          <h3>Travail</h3><p><span>Par matière et par chapitre : le cours, les définitions, les flashcards, la fiche et tes erreurs passées.</span></p><i class="jauge"></i>
+        </button>
+        <button role="tab" aria-selected="false" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5L2 9ZM6 11.5V16c2 2 10 2 12 0v-4.5M22 9v6"/></svg></span>
+          <h3>Apprendre</h3><p><span>Des leçons guidées, une étape à la fois, avec une question « Vérifie-toi » avant d'avancer.</span></p><i class="jauge"></i>
+        </button>
+        <button role="tab" aria-selected="false" type="button">
+          <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span>
+          <h3>S'exercer</h3><p><span>Quatre modes : série rapide, problèmes rédigés, calculs à valeurs tirées, interro blanche chronométrée.</span></p><i class="jauge"></i>
+        </button>
+      </div>
+
+      <div class="tel rev" id="tel" aria-label="Exemples d'écrans de Luno" role="img">
+        <div class="ecran-zone">
+          <div class="ecran actif">
+            <div><span class="st">Jeudi 12 novembre</span><h4>Bonsoir</h4></div>
+            <div class="carte nuit"><span class="st">Prochain DST</span><span class="gros">Physique-Chimie</span>Interro de cours · lundi 16 nov.<br><br><span class="puce">J-4</span> <span class="puce">2 chapitres</span></div>
+            <div class="duo"><div class="carte"><span class="chiffre">12</span>cartes à revoir</div><div class="carte"><span class="chiffre">2</span>DST cette semaine</div></div>
+            <div class="carte"><span class="st">À faire</span><div class="ligne-l" style="margin-top:8px"><span class="coche"></span>Finir le DM de physique<small>lun. 16/11</small></div></div>
+          </div>
+          <div class="ecran">
+            <div><span class="st">Calendrier</span><h4>Novembre</h4></div>
+            <div class="carte"><div class="mois"><i>L</i><i>M</i><i>M</i><i>J</i><i>V</i><i>S</i><i>D</i>
+              <span></span><span></span><span></span><span></span><span></span><span></span><span>1</span>
+              <span>2</span><span>3</span><span>4</span><span class="dst">5</span><span>6</span><span>7</span><span>8</span>
+              <span>9</span><span>10</span><span>11</span><span class="jour dst">12</span><span>13</span><span>14</span><span>15</span>
+              <span class="dst">16</span><span>17</span><span>18</span><span class="dst">19</span><span>20</span><span>21</span><span>22</span>
+              <span>23</span><span>24</span><span>25</span><span class="dst">26</span><span>27</span><span>28</span><span>29</span><span>30</span></div></div>
+            <div class="carte"><span class="st">À venir</span>
+              <div class="ligne-l" style="margin-top:8px"><b>Physique-Chimie</b><small>lun. 16 · 1 h</small></div>
+              <div class="ligne-l"><b>HGGSP</b><small>jeu. 19 · 2 h</small></div></div>
+          </div>
+          <div class="ecran">
+            <div><span class="st">3 tâches en cours</span><h4>À faire</h4></div>
+            <div class="carte">
+              <div class="ligne-l"><span class="coche ok"></span><span class="fait">Relire le chap. 9</span></div>
+              <div class="ligne-l"><span class="coche"></span>Finir le DM de physique<small>lun. 16/11</small></div>
+              <div class="ligne-l"><span class="coche"></span>Fiche HGGSP, axe 2<small>mer. 18/11</small></div>
+              <div class="ligne-l"><span class="coche"></span>Apprendre les dérivées usuelles</div>
+            </div>
+            <div class="carte" style="border-style:dashed;box-shadow:none;color:var(--muted)">+ Coller une liste</div>
+          </div>
+          <div class="ecran">
+            <div><span class="st">Tes matières</span><h4>Travail</h4></div>
+            <div class="duo">
+              <div class="mat" style="--c:#6f8fae"><u>⚗️</u><b>Physique-Chimie</b><small>4 chapitres</small></div>
+              <div class="mat" style="--c:#c98b6b"><u>🌍</u><b>HGGSP</b><small>3 chapitres</small></div>
+              <div class="mat" style="--c:#7fa37f"><u>📐</u><b>Mathématiques</b><small>1 chapitre</small></div>
+              <div class="mat" style="--c:#b07fa3"><u>📖</u><b>Français</b><small>1 chapitre</small></div>
+            </div>
+            <div class="carte"><span class="st">Chap. 9 · Décrire un mouvement</span>
+              <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap"><span class="puce">Cours</span><span class="puce">Déf</span><span class="puce">Flashcards</span><span class="puce">Fiche</span></div></div>
+          </div>
+          <div class="ecran">
+            <div><span class="st">Leçon guidée · étape 3 sur 9</span><h4>La dérivation</h4></div>
+            <div class="barre-p"><i style="width:33%"></i></div>
+            <div class="carte">Le nombre dérivé f′(a) est le coefficient directeur de la tangente à la courbe au point d'abscisse a.</div>
+            <div class="carte"><span class="st">Vérifie-toi</span><div style="margin:7px 0 9px">La tangente en a est horizontale. Que vaut f′(a) ?</div>
+              <div class="choix bon" style="margin-bottom:6px">f′(a) = 0</div><div class="choix">f′(a) = 1</div></div>
+          </div>
+          <div class="ecran">
+            <div><span class="st">Choisis un mode</span><h4>S'exercer</h4></div>
+            <div class="duo">
+              <div class="carte"><b>Série</b><br><span style="color:var(--muted)">Exercices rapides</span></div>
+              <div class="carte"><b>Problèmes</b><br><span style="color:var(--muted)">Rédigés pas à pas</span></div>
+              <div class="carte"><b>Calculs</b><br><span style="color:var(--muted)">Valeurs tirées</span></div>
+              <div class="carte nuit"><b>Interro blanche</b><br><span style="color:#b3a6a2">Chrono, note sur 20</span></div>
+            </div>
+            <div class="carte"><span class="st">Chapitres</span><div class="ligne-l" style="margin-top:8px"><span class="coche ok"></span>Chap. 9<small><span class="puce">DST J-4</span></small></div><div class="ligne-l"><span class="coche ok"></span>Chap. 11<small><span class="puce">DST J-4</span></small></div></div>
+          </div>
+          <div class="barre-bas" role="tablist" aria-label="Barre d'onglets">
+            <i class="pastille"></i>
+            <button type="button" role="tab" aria-selected="true" aria-label="Accueil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="Calendrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="À faire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="Travail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2-1.5-5-2-8-2v14c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2ZM12 6v14"/></svg></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="Apprendre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5L2 9ZM6 11.5V16c2 2 10 2 12 0v-4.5M22 9v6"/></svg></button>
+            <button type="button" role="tab" aria-selected="false" aria-label="S'exercer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="essaie" id="essaie">
+  <div class="cadre">
+    <div class="tete rev">
+      <p class="surtitre">Essaie ici</p>
+      <h2>Quatre gestes de Luno, <em class="it cuivre">sans quitter la page.</em></h2>
+      <p>Le contenu vient d'un vrai chapitre de Première : « Décrire un mouvement », en physique-chimie.</p>
+    </div>
+    <div class="banc">
+      <div class="bloc b-carte rev">
+        <h3>Retourne la carte</h3>
+        <p>Chaque « Je savais » double le délai avant de la revoir. Une erreur le remet à zéro.</p>
+        <div class="flip">
+          <button class="flip-in" id="carte" type="button" aria-label="Retourner la flashcard">
+            <span class="face r"><small id="c-num">Carte 1 sur 4</small><strong id="c-recto">Référentiel</strong><em>touche pour voir la réponse</em></span>
+            <span class="face v" id="c-verso">Objet de référence, supposé fixe, par rapport auquel on étudie le mouvement. On lui associe un repère d'espace et une horloge.</span>
+          </button>
+        </div>
+        <div class="rangee">
+          <button class="pt" id="c-non" type="button">À revoir</button>
+          <button class="pt oui" id="c-oui" type="button">Je savais</button>
+          <span class="info" id="c-info" aria-live="polite">Prochaine révision : demain</span>
+        </div>
+      </div>
+
+      <div class="bloc b-fiche rev" style="--i:1">
+        <h3>Règle la taille de ta fiche</h3>
+        <p>La veille du DST, garde l'essentiel. Une semaine avant, déplie tout le détail.</p>
+        <div class="curseur">
+          <label class="lbl" for="taille"><span>Longueur de la fiche</span><b id="taille-nom">L'essentiel</b></label>
+          <input type="range" id="taille" min="1" max="5" step="1" value="2">
+        </div>
+        <div class="fiche" id="fiche">
+          <h4>Référentiel</h4>
+          <div class="pli" data-n="1"><div><p><mark>Référentiel : objet de référence supposé fixe, avec un repère d'espace et une horloge.</mark></p></div></div>
+          <div class="pli" data-n="1"><div><p>Terrestre pour un mouvement sur Terre ; géocentrique pour la Lune et les satellites ; héliocentrique pour les planètes.</p></div></div>
+          <div class="pli" data-n="2"><div><p>Le mouvement dépend du référentiel : une balle lâchée dans un train tombe tout droit pour un passager, mais décrit une courbe vue du quai.</p></div></div>
+          <div class="pli" data-n="3"><div><p>Le référentiel terrestre convient aux mouvements plus courts qu'une rotation de la Terre sur elle-même.</p></div></div>
+          <div class="pli" data-n="4"><div><p>Repères associés : origine au centre de la Terre ou du Soleil, axes vers trois étoiles lointaines supposées fixes.</p></div></div>
+          <h4>Trajectoire</h4>
+          <div class="pli" data-n="1"><div><p><mark>La trajectoire est la courbe orientée formée par les positions successives du point.</mark></p></div></div>
+          <div class="pli" data-n="2"><div><p>Elle peut être rectiligne, circulaire ou curviligne.</p></div></div>
+          <div class="pli" data-n="2"><div><p>Une chronophotographie montre les positions prises à intervalles de temps égaux.</p></div></div>
+          <div class="pli" data-n="4"><div><p>Une position est repérée par ses coordonnées dans un repère gradué, et par l'instant t correspondant.</p></div></div>
+          <div class="pli" data-n="5"><div><p>La vitesse s'exprime en m/s ; on multiplie par 3,6 pour passer en km/h.</p></div></div>
+        </div>
+      </div>
+
+      <div class="bloc b-qcm rev">
+        <h3>Réponds à une question</h3>
+        <p class="q">Quel référentiel choisir pour étudier le mouvement de la Lune ?</p>
+        <div class="reps" id="reps">
+          <button type="button">Terrestre</button>
+          <button type="button" data-ok>Géocentrique</button>
+          <button type="button">Héliocentrique</button>
+          <button type="button">Aucun, la Lune est fixe</button>
+        </div>
+        <p class="retour" id="retour" aria-live="polite">Cinq types d'exercices dans Luno : QCM, vrai ou faux, texte à trous, remise en ordre et question ouverte.</p>
+      </div>
+
+      <div class="bloc b-formule rev" style="--i:1">
+        <h3>Écris une formule</h3>
+        <p>Au clavier du téléphone, tape des raccourcis : Luno dessine la formule.</p>
+        <input class="champ" id="formule" type="text" value="a = (del v)/(del t)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Formule à écrire">
+        <div class="touches" id="touches" aria-label="Touches rapides">
+          <button type="button" data-t="del ">Δ</button><button type="button" data-t="sig ">Σ</button><button type="button" data-t="^2">x²</button><button type="button" data-t="^-1">x⁻¹</button><button type="button" data-t="sqrt">√</button><button type="button" data-t="pi">π</button><button type="button" data-t=" => ">⇒</button><button type="button" data-t=" ~= ">≈</button>
+        </div>
+        <div class="apercu" id="apercu" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="contenu">
+  <div class="cadre">
+    <div class="tete rev">
+      <p class="surtitre">Déjà dans Luno</p>
+      <h2>Du vrai contenu de Première, rédigé à partir des cours.</h2>
+      <p>HGGSP, physique-chimie, mathématiques et français. Les fiches suivent ce que le prof attend : méthode de rédaction, résultats encadrés, applications numériques.</p>
+    </div>
+    <div class="chiffres rev">
+      <div><strong data-compte="208">208</strong><span>flashcards à répétition espacée</span></div>
+      <div><strong data-compte="107">107</strong><span>exercices de cinq types, plus des problèmes et des calculs</span></div>
+      <div><strong data-compte="47">47</strong><span>dates de DST de l'année, déjà au calendrier</span></div>
+      <div><strong data-compte="26">26</strong><span>schémas redessinés d'après les cours</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="methode" style="padding-top:0">
+  <div class="cadre">
+    <div class="tete rev">
+      <p class="surtitre">Comment ça marche</p>
+      <h2>Tu envoies ton cours. Il revient prêt à réviser.</h2>
+    </div>
+    <div class="etapes">
+      <div class="etape rev">
+        <h3>Tu envoies</h3>
+        <p>Une photo du cahier, le PDF du prof ou un texte dicté au micro. Tu peux ajouter tes consignes.</p>
+        <p class="main">jusqu'à 20 photos ou PDF</p>
+      </div>
+      <div class="etape rev" style="--i:1">
+        <h3>Claude rédige</h3>
+        <p>Les définitions mot pour mot, 10 à 20 flashcards, une fiche à cinq tailles, des exercices et les schémas.</p>
+        <p class="main">fidèle au cours, niveau lycée</p>
+      </div>
+      <div class="etape rev" style="--i:2">
+        <h3>Tu révises</h3>
+        <p>Le chapitre apparaît dans Travail, relié à ton prochain DST. Tes cartes du jour t'attendent à l'accueil.</p>
+        <p class="main">20 nouvelles cartes par jour, pas plus</p>
+      </div>
+    </div>
+    <div class="sans-ia rev">
+      <div>
+        <h3>Aucune IA ne tourne dans le site.</h3>
+        <p style="margin-top:14px">Tout le contenu est écrit à l'avance, puis publié. Luno répond donc instantanément, ne coûte rien et ne demande aucune clé.</p>
+      </div>
+      <ul>
+        <li><b>Synchronisé</b><span>Un compte, et ton téléphone et ton ordinateur se suivent.</span></li>
+        <li><b>Installable</b><span>Ajoute Luno à l'écran d'accueil, comme une application.</span></li>
+        <li><b>Mes erreurs</b><span>Tes fautes d'anciennes évaluations, à relire avant la suivante.</span></li>
+        <li><b>Brouillon</b><span>Dessin, notes et calculatrice à côté de chaque exercice.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="themes" style="padding-top:0">
+  <div class="cadre">
+    <div class="tete rev">
+      <p class="surtitre">Deux thèmes</p>
+      <h2>Rose poudré le jour, cuivre la nuit.</h2>
+      <p>Choisis-en un : cette page change avec toi, en cercle depuis ton doigt.</p>
+    </div>
+    <div class="themes">
+      <button class="theme clair rev" type="button" data-theme-choix="light" aria-pressed="false">
+        <span class="mini" aria-hidden="true"><i></i><i></i></span>
+        <span class="pal" aria-hidden="true"><i style="background:#f8f1ee"></i><i style="background:#e6bfb5"></i><i style="background:#c98b6b"></i><i style="background:#9f4830"></i><i style="background:#2a2a2d"></i></span>
+        <h3>Blush graphique</h3>
+        <p>Blush, terracotta, cuivre et anthracite.</p>
+        <span class="etat"></span>
+      </button>
+      <button class="theme sombre rev" type="button" data-theme-choix="dark" aria-pressed="false" style="--i:1">
+        <span class="mini" aria-hidden="true"><i></i><i></i></span>
+        <span class="pal" aria-hidden="true"><i style="background:#242426"></i><i style="background:#2f2f32"></i><i style="background:#4a3b35"></i><i style="background:#dba283"></i><i style="background:#f4e7e2"></i></span>
+        <h3>Nuit cuivrée</h3>
+        <p>Fond uni, texte crème, accent cuivre.</p>
+        <span class="etat"></span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<section id="technique" style="padding-top:0">
+  <div class="cadre tech">
+    <div class="tete rev">
+      <p class="surtitre">Sous le capot</p>
+      <h2>Un site statique, rapide et gratuit à héberger.</h2>
+      <p>Pas de serveur à entretenir. Chaque envoi sur la branche principale reconstruit le site et le met en ligne.</p>
+      <p style="margin-top:26px"><a class="btn btn-trait" href="https://github.com/pe4kk/project-luno" target="_blank" rel="noopener">Voir le code sur GitHub
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></p>
+    </div>
+    <dl class="pile rev">
+      <div><dt>Next.js 16, React 19</dt><dd>Export statique, toutes les pages s'affichent sans serveur.</dd></div>
+      <div><dt>TypeScript</dt><dd>Le contenu des cours est typé : une flashcard mal formée ne passe pas.</dd></div>
+      <div><dt>Tailwind CSS 4</dt><dd>Deux thèmes portés par des variables, jamais de couleur en dur.</dd></div>
+      <div><dt>Motion</dt><dd>Transitions de page et pastilles qui glissent, en transform et opacity seulement.</dd></div>
+      <div><dt>Supabase</dt><dd>Comptes et synchronisation entre appareils, avec attente hors connexion.</dd></div>
+      <div><dt>GitHub Pages</dt><dd>Déploiement automatique à chaque modification.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="fin">
+  <div class="lune-fin" aria-hidden="true"></div>
+  <div class="cadre">
+    <p class="surtitre rev">Prêt pour le prochain DST ?</p>
+    <h2 class="rev" style="margin-top:18px">Ouvre <em class="it cuivre">Luno.</em></h2>
+    <p class="rev">Gratuit, sans installation. Il fonctionne dans le navigateur de ton téléphone et de ton ordinateur.</p>
+    <div class="actions rev">
+      <a class="btn btn-plein aimant" href="https://pe4kk.github.io/project-luno/" target="_blank" rel="noopener">Ouvrir Luno
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="btn btn-trait aimant" href="https://github.com/pe4kk/project-luno" target="_blank" rel="noopener">Code source</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="cadre">
+    <a class="logo" href="#haut"><span class="logo-lune" aria-hidden="true"><i></i><i></i></span>Luno</a>
+    <a href="https://pe4kk.github.io/project-luno/" target="_blank" rel="noopener">pe4kk.github.io/project-luno</a>
+    <a href="https://github.com/pe4kk/project-luno" target="_blank" rel="noopener">GitHub</a>
+    <span>Les écrans montrés ici sont des exemples.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var racine = document.documentElement;
+  racine.classList.add("js");
+  var calme = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var $ = function (s, p) { return (p || document).querySelector(s); };
+  var $$ = function (s, p) { return Array.prototype.slice.call((p || document).querySelectorAll(s)); };
+
+  /* ---------- Thème ---------- */
+  function themeActuel() {
+    return racine.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+  function marquerTheme() {
+    var t = themeActuel();
+    $$("[data-theme-choix]").forEach(function (b) {
+      var oui = b.dataset.themeChoix === t;
+      b.setAttribute("aria-pressed", oui);
+      $(".etat", b).textContent = oui ? "thème actuel" : "essayer ce thème";
+    });
+  }
+  function changerTheme(t, x, y) {
+    if (t === themeActuel()) return;
+    var poser = function () { racine.dataset.theme = t; marquerTheme(); };
+    try { localStorage.setItem("luno-vitrine-theme", t); } catch (e) {}
+    if (!document.startViewTransition || calme) { poser(); return; }
+    var r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(poser).ready.then(function () {
+      racine.animate(
+        { clipPath: ["circle(0px at " + x + "px " + y + "px)", "circle(" + r + "px at " + x + "px " + y + "px)"] },
+        { duration: 750, easing: "cubic-bezier(0.65, 0, 0.35, 1)", pseudoElement: "::view-transition-new(root)" }
+      );
+    }).catch(function () {});
+  }
+  try { var garde = localStorage.getItem("luno-vitrine-theme"); if (garde === "dark" || garde === "light") racine.dataset.theme = garde; } catch (e) {}
+  marquerTheme();
+  $("#bascule").addEventListener("click", function (e) {
+    var b = e.currentTarget.getBoundingClientRect();
+    changerTheme(themeActuel() === "dark" ? "light" : "dark", b.left + b.width / 2, b.top + b.height / 2);
+  });
+  $$("[data-theme-choix]").forEach(function (b) {
+    b.addEventListener("click", function (e) {
+      var c = b.getBoundingClientRect();
+      changerTheme(b.dataset.themeChoix, e.clientX || c.left + c.width / 2, e.clientY || c.top + c.height / 2);
+    });
+  });
+
+  /* ---------- Lune : la phase suit le défilement, le disque suit la souris ---------- */
+  var ciel = $("#ciel"), haut = $("#haut"), enAttente = false;
+  function surDefilement() {
+    enAttente = false;
+    var y = scrollY, max = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+    var t = Math.min(1, y / Math.max(500, innerHeight * 0.9));
+    ciel.style.setProperty("--ox", (-26 + 52 * t).toFixed(2));
+    ciel.style.setProperty("--oy", (-15 + 30 * t).toFixed(2));
+    racine.style.setProperty("--tour", (y / max).toFixed(4));
+    haut.classList.toggle("colle", y > 8);
+  }
+  addEventListener("scroll", function () { if (!enAttente) { enAttente = true; requestAnimationFrame(surDefilement); } }, { passive: true });
+  surDefilement();
+  if (!calme && matchMedia("(hover: hover)").matches) {
+    addEventListener("pointermove", function (e) {
+      ciel.style.setProperty("--mx", (e.clientX / innerWidth - 0.5).toFixed(3));
+      ciel.style.setProperty("--my", (e.clientY / innerHeight - 0.5).toFixed(3));
+    }, { passive: true });
+  }
+
+  /* ---------- Poussière cuivrée ---------- */
+  (function () {
+    var toile = $("#poussiere"), ctx = toile.getContext("2d"), grains = [], l = 0, h = 0, visible = true, sx = 0, sy = 0;
+    function taille() {
+      var d = Math.min(2, devicePixelRatio || 1), b = toile.getBoundingClientRect();
+      l = b.width; h = b.height; toile.width = l * d; toile.height = h * d; ctx.setTransform(d, 0, 0, d, 0, 0);
+      var n = Math.round(Math.min(110, l * h / 11000));
+      grains = [];
+      for (var i = 0; i < n; i++) grains.push({ x: Math.random() * l, y: Math.random() * h, r: 0.5 + Math.random() * 1.7, v: 0.05 + Math.random() * 0.22, p: Math.random() * 6.28, z: 0.3 + Math.random() });
+    }
+    function dessine(t) {
+      if (visible) {
+        var style = getComputedStyle(racine);
+        ctx.clearRect(0, 0, l, h);
+        ctx.fillStyle = style.getPropertyValue("--copper").trim() || "#c98b6b";
+        var force = parseFloat(style.getPropertyValue("--poussiere")) || 0.6;
+        for (var i = 0; i < grains.length; i++) {
+          var g = grains[i];
+          g.y -= g.v; g.x += Math.sin(t / 2400 + g.p) * 0.12;
+          if (g.y < -4) { g.y = h + 4; g.x = Math.random() * l; }
+          ctx.globalAlpha = force * (0.25 + 0.75 * Math.abs(Math.sin(t / 1300 + g.p))) * Math.min(1, g.z);
+          ctx.beginPath(); ctx.arc(g.x + sx * g.z * 22, g.y + sy * g.z * 22, g.r, 0, 6.2832); ctx.fill();
+        }
+      }
+      if (!calme) requestAnimationFrame(dessine);
+    }
+    taille(); addEventListener("resize", taille);
+    addEventListener("pointermove", function (e) { sx = e.clientX / innerWidth - 0.5; sy = e.clientY / innerHeight - 0.5; }, { passive: true });
+    if ("IntersectionObserver" in window) new IntersectionObserver(function (es) { visible = es[0].isIntersecting; }).observe(toile);
+    requestAnimationFrame(dessine);
+  })();
+
+  /* ---------- Apparition au défilement et compteurs ---------- */
+  function compter(el) {
+    var but = +el.dataset.compte, debut = performance.now(), duree = 1500;
+    if (calme) return;
+    (function pas(t) {
+      var k = Math.min(1, (t - debut) / duree), e = 1 - Math.pow(1 - k, 4);
+      el.textContent = Math.round(but * e);
+      if (k < 1) requestAnimationFrame(pas);
+    })(debut);
+  }
+  if ("IntersectionObserver" in window) {
+    var obs = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.classList.add("vu");
+        $$("[data-compte]", e.target).forEach(compter);
+        obs.unobserve(e.target);
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+    $$(".rev").forEach(function (el) { obs.observe(el); });
+  } else { $$(".rev").forEach(function (el) { el.classList.add("vu"); }); }
+
+  /* ---------- Boutons aimantés ---------- */
+  if (!calme && matchMedia("(hover: hover)").matches) {
+    $$(".aimant").forEach(function (b) {
+      b.addEventListener("pointermove", function (e) {
+        var c = b.getBoundingClientRect();
+        b.style.transform = "translate3d(" + ((e.clientX - c.left - c.width / 2) * 0.22).toFixed(1) + "px," + ((e.clientY - c.top - c.height / 2) * 0.3).toFixed(1) + "px,0)";
+      });
+      b.addEventListener("pointerleave", function () { b.style.transform = ""; });
+    });
+    var tel = $("#tel");
+    tel.addEventListener("pointermove", function (e) {
+      var c = tel.getBoundingClientRect();
+      tel.style.setProperty("--ry", (((e.clientX - c.left) / c.width - 0.5) * 14).toFixed(2));
+      tel.style.setProperty("--rx", ((0.5 - (e.clientY - c.top) / c.height) * 9).toFixed(2));
+    });
+    tel.addEventListener("pointerleave", function () { tel.style.setProperty("--ry", 0); tel.style.setProperty("--rx", 0); });
+  }
+
+  /* ---------- Les six onglets ---------- */
+  (function () {
+    var zone = $("#demo-onglets"), liste = $$(".liste button", zone), bas = $$(".barre-bas button", zone), ecrans = $$(".ecran", zone), pastille = $(".pastille", zone), actuel = 0, minuteur;
+    function aller(n, parMain) {
+      actuel = n;
+      [liste, bas].forEach(function (g) { g.forEach(function (b, i) { b.setAttribute("aria-selected", i === n); }); });
+      ecrans.forEach(function (e, i) { e.classList.toggle("actif", i === n); });
+      pastille.style.setProperty("--n", n);
+      if (parMain) { clearInterval(minuteur); zone.classList.remove("auto"); }
+    }
+    liste.forEach(function (b, i) { b.addEventListener("click", function () { aller(i, true); }); });
+    bas.forEach(function (b, i) { b.addEventListener("click", function () { aller(i, true); }); });
+    if (!calme) minuteur = setInterval(function () { aller((actuel + 1) % 6); }, 4500); else zone.classList.remove("auto");
+  })();
+
+  /* ---------- Flashcard ---------- */
+  (function () {
+    var cartes = [
+      ["Référentiel", "Objet de référence, supposé fixe, par rapport auquel on étudie le mouvement. On lui associe un repère d'espace et une horloge."],
+      ["Système", "L'objet dont on étudie le mouvement."],
+      ["Point matériel", "Modèle du système réduit à un seul point, en général son centre de gravité, auquel on associe toute la masse m du système."],
+      ["Limite du modèle du point matériel", "On perd des informations sur le mouvement : par exemple la rotation d'un marteau qui tourne sur lui-même."]
+    ];
+    var carte = $("#carte"), i = 0, delai = 1, occupe = false;
+    function dire(j) { return j === 1 ? "demain" : "dans " + j + " jours"; }
+    function suivante(sue) {
+      if (occupe) return; occupe = true;
+      delai = sue ? delai * 2 : 1;
+      $("#c-info").textContent = sue ? "Su. Prochaine révision : " + dire(delai) : "À revoir. Elle revient demain.";
+      carte.style.setProperty("--dx", sue ? "70px" : "-70px"); carte.style.setProperty("--dr", sue ? "9deg" : "-9deg");
+      carte.classList.add("part");
+      setTimeout(function () {
+        i = (i + 1) % cartes.length;
+        carte.style.transition = "none"; carte.classList.remove("part", "verso");
+        $("#c-recto").textContent = cartes[i][0]; $("#c-verso").textContent = cartes[i][1];
+        $("#c-num").textContent = "Carte " + (i + 1) + " sur " + cartes.length;
+        carte.style.opacity = 0; void carte.offsetWidth; carte.style.transition = ""; carte.style.opacity = "";
+        occupe = false;
+      }, calme ? 0 : 460);
+    }
+    carte.addEventListener("click", function () { carte.classList.toggle("verso"); });
+    $("#c-oui").addEventListener("click", function () { suivante(true); });
+    $("#c-non").addEventListener("click", function () { suivante(false); });
+  })();
+
+  /* ---------- Fiche à curseur ---------- */
+  (function () {
+    var noms = ["", "L'essentiel", "Court", "Moyen", "Complet", "Tout le détail"], c = $("#taille"), plis = $$("#fiche .pli");
+    function regler() {
+      var n = +c.value;
+      c.style.setProperty("--fill", ((n - 1) / 4 * 100) + "%");
+      $("#taille-nom").textContent = noms[n];
+      plis.forEach(function (p) { p.classList.toggle("ferme", +p.dataset.n > n); });
+    }
+    c.addEventListener("input", regler); regler();
+  })();
+
+  /* ---------- QCM ---------- */
+  (function () {
+    var boutons = $$("#reps button"), retour = $("#retour");
+    boutons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        if (b.hasAttribute("data-ok")) {
+          b.classList.add("juste"); boutons.forEach(function (x) { x.disabled = true; });
+          retour.innerHTML = "<b>Juste.</b> Géocentrique pour la Lune et les satellites, héliocentrique pour les planètes, terrestre pour un mouvement sur Terre.";
+        } else {
+          b.classList.remove("faux"); void b.offsetWidth; b.classList.add("faux"); b.disabled = true;
+          retour.innerHTML = "<b>Pas tout à fait.</b> La Lune tourne autour de la Terre : cherche le référentiel dont l'origine est au centre de la Terre.";
+        }
+      });
+    });
+  })();
+
+  /* ---------- Saisie de formule ---------- */
+  (function () {
+    var champ = $("#formule"), apercu = $("#apercu");
+    var regles = [[/\bdel\b\s?/g, "Δ"], [/\bsig\b\s?/g, "Σ"], [/\^-1/g, "⁻¹"], [/\^2/g, "²"], [/\^3/g, "³"], [/=>/g, "⇒"], [/->/g, "→"], [/<=/g, "≤"], [/>=/g, "≥"], [/!=/g, "≠"], [/~=/g, "≈"], [/\bsqrt\b/g, "√"], [/\bpi\b/g, "π"], [/\brho\b/g, "ρ"], [/\*/g, "·"]];
+    function sansPar(s) { return s.replace(/^\((.*)\)$/, "$1"); }
+    function dessiner() {
+      var t = champ.value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      t = t.replace(/&lt;=/g, "≤").replace(/&gt;=/g, "≥").replace(/=&gt;/g, "⇒").replace(/-&gt;/g, "→");
+      regles.forEach(function (r) { t = t.replace(r[0], r[1]); });
+      t = t.replace(/(\([^()]+\)|[^\s\/()=]+)\s?\/\s?(\([^()]+\)|[^\s\/()=]+)/g, function (_, a, b) {
+        return '<span class="frac"><span>' + sansPar(a) + "</span><span>" + sansPar(b) + "</span></span>";
+      });
+      apercu.innerHTML = t ? "<span>" + t + "</span>" : '<span style="font-family:var(--font-sans);font-size:15px;color:var(--muted)">Tape une formule au-dessus</span>';
+    }
+    champ.addEventListener("input", dessiner);
+    $$("#touches button").forEach(function (b) {
+      b.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+      b.addEventListener("click", function () {
+        var d = champ.selectionStart == null ? champ.value.length : champ.selectionStart, f = champ.selectionEnd == null ? d : champ.selectionEnd;
+        champ.value = champ.value.slice(0, d) + b.dataset.t + champ.value.slice(f);
+        champ.focus(); champ.setSelectionRange(d + b.dataset.t.length, d + b.dataset.t.length); dessiner();
+      });
+    });
+    dessiner();
+  })();
+})();
+</script>
+</body>
+</html>
