@@ -68,11 +68,11 @@ Règles qui marchent :
 
 ## Produit 3D
 
-- `product.type: 'bottle'` : profil `BOTTLE_PROFILE` (paires `[rayon, y]`) tourné en `LatheGeometry`. Verre = coque transparente brillante ; eau = `transmission` (réfracte le fond animé) ; étiquette = texture canvas générée (marque + variante) ; bulles instanciées si `bubbles: true`.
+- `product.type: 'bottle'` : **bouteille PET réaliste** générée en code. Profil `petRadius(y)` échantillonné tous les 0,01 (rainures basses, zone d'étiquette lisse, 4 anneaux de préhension, épaule en cosinus, col, collerette), fond **pétaloïde à 5 pieds** (déformation par sommet), bouchon à 90 stries + bague d'inviolabilité, étiquette film imprimée tout autour (face avant : marque/variante ; dos : `product.minerals` + code-barres), **gouttes de condensation** (`product.droplets`) et bulles si `bubbles: true`. Eau = `transmission` (réfracte le fond), coque PET = transparent brillant.
 - `product.type: 'can'` : profil `CAN_PROFILE`, métal + étiquette pleine hauteur aux couleurs de la variante.
 - **Nouvelle forme** (flacon, pot, tube) : écrire un profil `[rayon, y]` de bas en haut, centré sur y = 0, hauteur ~4,2 unités, et une fonction `createXxx(v)` sur le modèle de `createCan`.
 - **Modèle fourni** : `product: { gltf: 'https://…/model.glb', labelMesh: 'Label' }` — le moteur clone le modèle par variante et remplace la texture du mesh nommé `labelMesh`. Normaliser le modèle à ~4,2 unités de haut, centré.
-- Matériaux transmission : coûteux. `lowPower` (iOS ou < 1024 px) les remplace par de la transparence simple.
+- Matériaux transmission : coûteux mais indispensables au réalisme (sans eux, le liquide paraît laiteux). Ils restent actifs partout ; un **watchdog** (`watchPerf`) les remplace par de la transparence et passe en pixel ratio 1 si la moyenne tombe sous ~35 i/s. `lowPower` (iOS ou < 1024 px) réduit seulement les segments, gouttes et bulles.
 - Les objets en `transmission` ne voient pas les autres objets transparents : garder **eau = transmission, verre = transparent** (pas l'inverse), sinon l'eau disparaît.
 
 ## Pièges connus
@@ -82,7 +82,8 @@ Règles qui marchent :
 - Après tout changement de hauteur du DOM (accordéon FAQ, images), appeler `ScrollTrigger.refresh()` ; le resize reconstruit la timeline.
 - Le drag écoute `window` : exclure l'UI (`a, button, input, summary…`) sinon les clics deviennent des swipes.
 - Les sons ne jouent qu'après un geste utilisateur (politique autoplay) — c'est voulu.
-- Texte blanc sur produit clair : le voile `.section::before` est indispensable ; vérifier sur les captures mobiles.
+- Texte blanc sur produit clair : le voile `.scrim` (fixe, bas d'écran) est indispensable. Ne jamais le poser **par section** : la jonction entre deux sections crée une bande nette (bug vu sur iPhone).
+- Toute pièce creuse (bouchon, col) doit être fermée : à travers une coque transparente, on la voit par en dessous.
 - Les polices web doivent être chargées **avant** de dessiner les étiquettes canvas (`document.fonts.load`).
 - Pas d'aimantation après le dernier point `data-snap`, sinon le site « ramène » l'utilisateur en arrière.
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Limpide — Eau de source</title>
-<meta name="description" content="Landing produit 3D pilotée par le scroll — démo Limpide, eau de source en bouteille de verre." />
+<meta name="description" content="Landing produit 3D pilotée par le scroll — démo Limpide, eau de source naturelle." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,300..900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -126,11 +126,10 @@
   main a, main button, main input, main summary, main label, main form, .faq, .newsletter, .footer { pointer-events: auto; }
   .section { position: relative; min-height: 100vh; min-height: 100svh; padding: 96px var(--gutter) calc(var(--gutter) + 40px); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; text-align: center; }
   .section--top { justify-content: flex-start; }
-  /* Voile bas : garantit le contraste du texte blanc quand le produit (clair) passe derrière */
-  .section > * { position: relative; z-index: 1; }
-  .section::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 62%; z-index: 0; pointer-events: none;
-    background: linear-gradient(to top, color-mix(in oklab, var(--c2) 78%, transparent) 0%, color-mix(in oklab, var(--c2) 40%, transparent) 45%, transparent 100%); }
-  .faq::before, .newsletter::before { height: 100%; background: color-mix(in oklab, var(--c2) 35%, transparent); }
+  /* Voile bas fixe : garantit le contraste du texte blanc quand le produit (clair) passe derrière.
+     Fixe à l'écran (et non par section) pour n'avoir aucune couture entre deux sections. */
+  .scrim { position: fixed; left: 0; right: 0; bottom: 0; height: 58vh; height: 58svh; z-index: 1; pointer-events: none;
+    background: linear-gradient(to top, color-mix(in oklab, var(--c2) 80%, transparent) 0%, color-mix(in oklab, var(--c2) 38%, transparent) 45%, transparent 100%); }
   .h-display {
     margin: 0; font-weight: 900; font-style: italic; font-stretch: 118%; text-transform: uppercase;
     font-size: clamp(40px, 7.4vw, 112px); line-height: 0.88; letter-spacing: -0.025em;
@@ -229,6 +228,7 @@
 </div>
 
 <div id="stage" aria-hidden="true"></div>
+<div class="scrim" aria-hidden="true"></div>
 <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="progress" aria-hidden="true"><b></b></div>
 
@@ -263,13 +263,15 @@
    ════════════════════════════════════════════════════════════════════════ */
 window.CONFIG = {
   brand: 'Limpide',
-  tagline: 'Eau de source en verre',
+  tagline: 'Eau de source naturelle',
   locale: 'fr',
 
   /* Produit : 'bottle' | 'can' (procéduraux) ou { gltf: 'https://…/model.glb', labelMesh: 'Label' } */
   product: {
-    type: 'bottle',
-    size: '75 cl',
+    type: 'bottle',     // bouteille PET détaillée
+    size: '50 cl',
+    droplets: true,     // gouttes de condensation sur la bouteille
+    minerals: [['Calcium', '4'], ['Magnésium', '1'], ['Sodium', '3'], ['Bicarbonates', '18'], ['Résidu sec à 180 °C', '32'], ['pH', '6,8']],
   },
 
   /* Une entrée par variante. c1 = lueur claire, c2 = fond profond, cap = bouchon / accent 3D. */
@@ -283,7 +285,7 @@ window.CONFIG = {
 
   /* Bénéfices : "crossed" = ce que les autres font (barré), title = ce qu'on fait. icon = clé de ICONS. */
   benefits: [
-    { icon: 'leaf',   crossed: 'Bouteille plastique', title: ['Verre', 'consigné'],      text: 'Chaque bouteille revient, est lavée et reremplie jusqu’à 50 fois. Le plastique, on a juste arrêté.' },
+    { icon: 'leaf',   crossed: 'Plastique vierge',    title: ['100 %', 'recyclée'],      text: 'Bouteille en plastique 100 % recyclé, recyclable à son tour, bouchon attaché. Rien de neuf, rien de perdu.' },
     { icon: 'drop',   crossed: 'Résidu sec 450 mg/L',  title: ['Très faiblement', 'minéralisée'], text: '32 mg/L de résidu sec. Une eau légère, au goût neutre, qui accompagne tout.' },
     { icon: 'shield', crossed: 'Eau traitée',          title: ['Source', 'protégée'],      text: 'Captée à 40 mètres sous un massif classé. Aucune désinfection, aucun traitement : elle n’en a pas besoin.' },
     { icon: 'spark',  crossed: 'Sucres ajoutés',       title: ['Arômes', 'naturels'],      text: 'Nos versions aromatisées ne contiennent que des extraits de fruits et de plantes. Zéro sucre, zéro édulcorant.' },
@@ -294,13 +296,13 @@ window.CONFIG = {
 
   faq: [
     { q: 'D’où vient l’eau Limpide ?', a: 'D’une source unique captée à 40 mètres de profondeur, dans un massif granitique protégé. Elle est embouteillée sur place, à la sortie de la source.' },
-    { q: 'Comment fonctionne la consigne ?', a: 'Rapportez vos bouteilles vides dans un point de collecte partenaire : elles sont lavées, contrôlées puis reremplies. Chaque bouteille fait en moyenne 50 rotations.' },
+    { q: 'La bouteille est-elle recyclable ?', a: 'Oui. Elle est fabriquée à 100 % en plastique recyclé (rPET) et se recycle entièrement, bouchon compris : il reste attaché pour ne pas se perdre.' },
     { q: 'Les versions aromatisées contiennent-elles du sucre ?', a: 'Non. Elles contiennent uniquement de l’eau de source et des extraits naturels de fruits ou de plantes. 0 kcal, 0 g de sucre, aucun édulcorant.' },
     { q: 'Quelle est la composition minérale ?', a: 'Résidu sec à 180 °C : 32 mg/L. Calcium 4 mg/L, magnésium 1 mg/L, sodium 3 mg/L, pH 6,8. Convient à la préparation des aliments des nourrissons.' },
     { q: 'Comment conserver une bouteille entamée ?', a: 'Au frais, bouchée, et à consommer dans les 3 jours. Avant ouverture, à l’abri de la lumière et de la chaleur.' },
   ],
 
-  newsletter: { title: ['Restez', 'à la source'], text: 'Nouvelles variantes, points de consigne près de chez vous. Un mail par mois, pas plus.', placeholder: 'Votre adresse mail', cta: "S'inscrire", success: 'Merci ! Vous êtes inscrit·e.' },
+  newsletter: { title: ['Restez', 'à la source'], text: 'Nouvelles variantes, éditions limitées. Un mail par mois, pas plus.', placeholder: 'Votre adresse mail', cta: "S'inscrire", success: 'Merci ! Vous êtes inscrit·e.' },
   socials: [{ label: 'Instagram', href: '#' }, { label: 'TikTok', href: '#' }],
   legal: [{ label: 'Mentions légales', href: '#' }, { label: 'CGU', href: '#' }, { label: 'Confidentialité', href: '#' }],
   footerNote: '© 2026 Limpide — marque fictive, démo',
@@ -313,7 +315,7 @@ window.CONFIG = {
      others (0..1 visibilité des produits non actifs), swipe (drag autorisé). Les valeurs manquantes héritent de la section précédente. */
   keyframes: {
     gamme:      { camZ: 19, camY: 0.4, x: 0, y: 1.0, scale: 0.92, rotX: 0, rotY: 0, rotZ: 0.06, spread: 1, others: 1, swipe: true },
-    profil:     { camZ: 15, camY: 0.8, y: 1.4, scale: 1.0, rotY: Math.PI * 0.15, rotZ: 0, spread: 3.2, others: 0, swipe: false },
+    profil:     { camZ: 16.5, camY: 0.8, y: 0.95, scale: 0.95, rotY: Math.PI * 0.15, rotZ: 0, spread: 3.2, others: 0, swipe: false },
     benefit1:   { camZ: 11, camY: 0.9, x: -1.7, y: 1.0, scale: 1.12, rotX: 0.18, rotY: Math.PI * 0.6, rotZ: -0.28 },
     benefit2:   { camZ: 10, camY: 0.4, x: 1.8, y: 0.7, scale: 1.2, rotX: -0.1, rotY: Math.PI * 1.1, rotZ: 0.24 },
     benefit3:   { camZ: 11.5, camY: 1.6, x: -1.6, y: 1.2, scale: 1.12, rotX: 0.32, rotY: Math.PI * 1.55, rotZ: -0.16 },
@@ -591,25 +593,178 @@ function makeLabelTexture(v) {
   return t;
 }
 
-/* Bouteille procédurale : profil tourné (Lathe) — verre + eau + bouchon + étiquette + bulles */
-const BOTTLE_PROFILE = [
-  [0.0, -2.1], [0.78, -2.1], [0.88, -2.04], [0.92, -1.9], [0.93, 0.55], [0.9, 0.85], [0.78, 1.15], [0.55, 1.5], [0.4, 1.78], [0.37, 2.0], [0.4, 2.04], [0.4, 2.12], [0.37, 2.14],
-];
-function bottleGeometry(scaleR = 1, top = Infinity, close = false) {
-  const pts = [];
-  for (const [r, y] of BOTTLE_PROFILE) { if (y > top) break; pts.push(new THREE.Vector2(r * scaleR, y)); }
-  if (close) { const last = pts[pts.length - 1]; pts.push(new THREE.Vector2(last.x * 0.98, top), new THREE.Vector2(0, top)); }
-  return new THREE.LatheGeometry(pts, lowPower ? 48 : 96);
+/* ── Bouteille PET réaliste, 100 % procédurale ──────────────────────────
+   Profil r(y) échantillonné finement (rainures, zone d'étiquette, anneaux de
+   préhension, épaule, col, collerette), fond pétaloïde à 5 pieds déformé par
+   sommet, bouchon strié + bague d'inviolabilité, étiquette imprimée tout autour,
+   gouttes de condensation et bulles. Unités : hauteur ≈ 4,8, centrée sur y = 0. */
+const PET = { bottom: -2.3, fill: 1.15, labelY0: -1.27, labelY1: -0.15, labelR: 0.857 };
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const groove = (y, centers, depth, hw) => centers.reduce((acc, c) => acc + depth * (1 - sstep(0, hw, Math.abs(y - c))), 0);
+function petRadius(y) {
+  if (y < -2.0) return 0.64 + 0.22 * Math.sin(((y + 2.3) / 0.3) * Math.PI / 2);
+  if (y < -1.3) return 0.86 - groove(y, [-1.8, -1.55], 0.035, 0.05);
+  if (y < -0.12) return 0.85 + 0.01 * (1 - sstep(-1.32, -1.26, y)) + 0.01 * sstep(-0.18, -0.12, y);
+  if (y < 0.72) return 0.86 - groove(y, [0.0, 0.18, 0.36, 0.54], 0.06, 0.065);
+  if (y < 1.62) { const t = (y - 0.72) / 0.9; return 0.42 + 0.44 * (0.5 + 0.5 * Math.cos(Math.PI * t)); }
+  if (y < 1.9) return 0.42 - 0.05 * sstep(1.62, 1.76, y);
+  if (y < 2.0) return 0.37 + 0.13 * sstep(1.9, 1.925, y) * (1 - sstep(1.975, 2.0, y)); // collerette
+  return 0.36;
+}
+function latheFrom(pts, seg) { return new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg); }
+// fond pétaloïde : entre les 5 pieds, la paroi remonte et rentre
+function petaloid(geo, k = 1) {
+  const pos = geo.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    if (v.y > -2.0) continue;
+    const t = clamp((-2.0 - v.y) / 0.3, 0, 1), th = Math.atan2(v.x, v.z);
+    const valley = Math.pow(1 - (0.5 + 0.5 * Math.cos(5 * th)), 1.5);
+    const sc = 1 - 0.28 * t * valley * k;
+    pos.setXYZ(i, v.x * sc, v.y + 0.16 * t * valley * k, v.z * sc);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+// déplacement radial en fonction de l'angle (stries du bouchon, bague)
+function radialBump(geo, y0, y1, fn) {
+  const pos = geo.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const r = Math.hypot(v.x, v.z);
+    if (v.y < y0 || v.y > y1 || r < 0.3) continue;
+    const sc = 1 + fn(Math.atan2(v.x, v.z)) / r;
+    pos.setXYZ(i, v.x * sc, v.y, v.z * sc);
+  }
+  geo.computeVertexNormals();
+  return geo;
 }
 const shared = {};
 function sharedGeos() {
-  if (shared.glass) return shared;
-  shared.glass = bottleGeometry(1);
-  shared.water = bottleGeometry(0.93, 0.95, true);
-  shared.cap = new THREE.CylinderGeometry(0.43, 0.43, 0.46, 64);
-  shared.label = new THREE.CylinderGeometry(0.945, 0.945, 1.25, 96, 1, true, Math.PI, Math.PI * 2);
-  shared.bubble = new THREE.SphereGeometry(0.03, 8, 6);
+  if (shared.shell) return shared;
+  const seg = lowPower ? 72 : 128;
+  const shell = [[0, -2.12], [0.25, -2.18], [0.5, -2.27]];
+  for (let y = PET.bottom; y <= 2.32; y += 0.01) shell.push([petRadius(y), y]);
+  shell.push([0.33, 2.32]);
+  shared.shell = petaloid(latheFrom(shell, seg));
+  const water = [[0, -2.1], [0.45, -2.16], [0.6, -2.24]];
+  for (let y = -2.24; y <= PET.fill; y += 0.02) water.push([Math.max(0.01, petRadius(y) - 0.03), y]);
+  water.push([petRadius(PET.fill) - 0.035, PET.fill], [0, PET.fill]);
+  shared.water = petaloid(latheFrom(water, seg), 0.92);
+  // bouchon : profil + 90 stries verticales
+  shared.cap = radialBump(latheFrom([[0, 2.49], [0.38, 2.49], [0.425, 2.475], [0.44, 2.445], [0.44, 2.08], [0.43, 2.06], [0.36, 2.06], [0, 2.06]], 360),
+    2.1, 2.43, (th) => 0.011 * sstep(-0.2, 0.6, Math.sin(th * 90)));
+  // bague d'inviolabilité : anneau avec ponts
+  shared.ring = radialBump(latheFrom([[0.37, 2.045], [0.435, 2.045], [0.44, 2.035], [0.44, 1.995], [0.43, 1.985], [0.37, 1.985]], 240),
+    1.99, 2.04, (th) => -0.012 * sstep(0.55, 0.8, Math.sin(th * 16)));
+  shared.label = new THREE.CylinderGeometry(PET.labelR, PET.labelR, PET.labelY1 - PET.labelY0, seg, 1, true, Math.PI, Math.PI * 2);
+  shared.bubble = new THREE.SphereGeometry(0.028, 8, 6);
+  shared.drop = new THREE.SphereGeometry(1, 10, 8);
   return shared;
+}
+
+/* Étiquette PET : film imprimé tout autour. Face avant = u 0,5 (x = 1024).
+   Au dos : composition minérale et code-barres, comme sur une vraie bouteille. */
+function makePetLabel(v) {
+  const W = 2048, H = 426, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#ffffff'); bg.addColorStop(1, v.c1);
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // vagues
+  for (let k = 0; k < 3; k++) {
+    g.beginPath(); g.moveTo(0, H);
+    for (let x = 0; x <= W; x += 8) g.lineTo(x, H * (0.72 + k * 0.08) + Math.sin((x / W) * Math.PI * 6 + k * 1.7) * 14);
+    g.lineTo(W, H); g.closePath(); g.fillStyle = v.c2; g.globalAlpha = 0.18 + k * 0.22; g.fill();
+  }
+  g.globalAlpha = 1;
+  // filets haut / bas
+  g.fillStyle = v.c2; g.fillRect(0, 10, W, 3); g.fillRect(0, H - 13, W, 3);
+  // face avant
+  g.textAlign = 'center'; g.fillStyle = v.c2;
+  g.font = 'italic 900 132px Archivo, Helvetica, Arial, sans-serif'; g.fillText(C.brand.toUpperCase(), 1024, 170);
+  g.font = '600 38px "JetBrains Mono", monospace'; g.fillText(v.name.join(' ').toUpperCase(), 1024, 232);
+  g.font = '400 24px "JetBrains Mono", monospace'; g.globalAlpha = 0.75;
+  g.fillText(`${C.tagline.toUpperCase()} · ${C.product.size || ''}`, 1024, 274); g.globalAlpha = 1;
+  // pictos montagne de part et d'autre
+  [700, 1348].forEach((cx) => { g.beginPath(); g.moveTo(cx - 60, 190); g.lineTo(cx - 18, 120); g.lineTo(cx + 4, 150); g.lineTo(cx + 28, 104); g.lineTo(cx + 70, 190); g.strokeStyle = v.c2; g.lineWidth = 4; g.stroke(); });
+  // dos : composition minérale
+  g.textAlign = 'left'; g.font = '700 22px "JetBrains Mono", monospace'; g.fillText('COMPOSITION MINÉRALE (mg/L)', 150, 70);
+  const rows = C.product.minerals || [['Calcium', '4'], ['Magnésium', '1'], ['Sodium', '3'], ['Bicarbonates', '18'], ['Résidu sec à 180 °C', '32'], ['pH', '6,8']];
+  g.font = '400 20px "JetBrains Mono", monospace';
+  rows.forEach(([k, val], i) => { const y = 106 + i * 30; g.fillText(k, 150, y); g.textAlign = 'right'; g.fillText(val, 520, y); g.textAlign = 'left'; g.fillRect(150, y + 8, 370, 1); });
+  // dos : code-barres
+  let x = 1560; const seed = [...v.id].reduce((a, c) => a + c.charCodeAt(0), 7);
+  for (let i = 0; i < 60; i++) { const w = 2 + ((seed * (i + 3)) % 5); if (i % 2 === 0) g.fillRect(x, 70, w, 120); x += w + 1; }
+  g.font = '400 20px "JetBrains Mono", monospace'; g.fillText('3 760 000 ' + String(seed).padStart(5, '0'), 1560, 216);
+  g.fillText('Recyclable · bouchon attaché', 1560, 250);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+const waterMaterial = (v, cheap) => cheap
+  ? new THREE.MeshPhysicalMaterial({ color: v.liquid, transparent: true, opacity: 0.16, roughness: 0.02, metalness: 0, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false })
+  : new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 1.4, ior: 1.333, roughness: 0.02, attenuationColor: new THREE.Color(v.liquid), attenuationDistance: 5, envMapIntensity: 1.3, specularIntensity: 1 });
+
+function createBottle(v) {
+  const g = sharedGeos();
+  const group = new THREE.Group();
+  // eau : transmission (réfracte le fond animé) — repli automatique si l'appareil rame (voir watchdog)
+  const water = new THREE.Mesh(g.water, waterMaterial(v, false));
+  water.renderOrder = 1;
+  // PET : coque fine et brillante (reflets + fresnel), dessinée après l'eau
+  const shell = new THREE.Mesh(g.shell, new THREE.MeshPhysicalMaterial({
+    color: 0xf2faff, transparent: true, opacity: 0.16, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03,
+    ior: 1.57, envMapIntensity: 2.4, side: THREE.DoubleSide, depthWrite: false, specularIntensity: 1,
+  }));
+  shell.renderOrder = 2;
+  const label = new THREE.Mesh(g.label, new THREE.MeshPhysicalMaterial({ map: makePetLabel(v), roughness: 0.32, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12 }));
+  label.position.y = (PET.labelY0 + PET.labelY1) / 2;
+  const plastic = new THREE.MeshPhysicalMaterial({ color: v.cap, roughness: 0.42, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.4, sheen: 0.3, sheenColor: new THREE.Color(0xffffff) });
+  const cap = new THREE.Mesh(g.cap, plastic);
+  const ring = new THREE.Mesh(g.ring, plastic);
+  group.add(water, shell, label, cap, ring);
+  group.userData.water = water;
+
+  if (C.product.droplets !== false) {
+    const count = lowPower ? 60 : 120;
+    const drops = new THREE.InstancedMesh(g.drop, new THREE.MeshPhysicalMaterial({ color: 0xdff2ff, transparent: true, opacity: 0.28, roughness: 0, clearcoat: 1, ior: 1.33, envMapIntensity: 1.5, depthWrite: false }), count);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), z = new THREE.Vector3(0, 0, 1), n = new THREE.Vector3(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      // hors étiquette : bas du corps ou zone de préhension / épaule
+      const y = Math.random() < 0.35 ? -1.95 + Math.random() * 0.62 : -0.1 + Math.random() * 1.35;
+      const th = Math.random() * Math.PI * 2, r = petRadius(y) + 0.004, s = 0.008 + Math.pow(Math.random(), 3) * 0.028;
+      n.set(Math.sin(th), 0, Math.cos(th));
+      q.setFromUnitVectors(z, n);
+      m.compose(pos.set(n.x * r, y, n.z * r), q, sc.set(s, s * 1.25, s * 0.45));
+      drops.setMatrixAt(i, m);
+    }
+    drops.renderOrder = 4;
+    group.add(drops);
+  }
+  if (v.bubbles) {
+    const count = lowPower ? 35 : 70;
+    const inst = new THREE.InstancedMesh(g.bubble, new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, roughness: 0, envMapIntensity: 2, depthWrite: false }), count);
+    inst.renderOrder = 2;
+    inst.userData.bottom = -2.05; inst.userData.top = PET.fill - 0.05;
+    inst.userData.seeds = Array.from({ length: count }, () => { const y = -2 + Math.random() * 3; return { a: Math.random() * Math.PI * 2, f: Math.random() * 0.85, y, s: 0.4 + Math.random() * 0.9, k: 0.5 + Math.random() }; });
+    group.add(inst); group.userData.bubbles = inst;
+  }
+  group.userData.variant = v;
+  return group;
+}
+
+/* Watchdog perf : si la moyenne passe sous ~35 i/s, on remplace la transmission par de la transparence */
+const perf = { samples: [], degraded: false };
+function watchPerf(dt, t) {
+  if (perf.degraded || t < 3) return;
+  perf.samples.push(dt); if (perf.samples.length < 90) return;
+  const avg = perf.samples.reduce((a, b) => a + b, 0) / perf.samples.length; perf.samples.length = 0;
+  if (avg > 1 / 35) {
+    perf.degraded = true;
+    products.forEach((p) => { const w = p.userData.water; if (w) { w.material.dispose(); w.material = waterMaterial(p.userData.variant, true); } });
+    renderer.setPixelRatio(1);
+    console.info('[scroll-3d] qualité réduite pour garder la fluidité');
+  }
 }
 
 /* Canette procédurale : profil Lathe + étiquette pleine hauteur (opaque, métal) */
@@ -633,36 +788,6 @@ function createCan(v) {
   label.position.y = -0.1;
   g.add(body, label); g.userData.variant = v;
   return g;
-}
-
-function createBottle(v) {
-  const g = sharedGeos();
-  const group = new THREE.Group();
-  // eau : transmission (réfraction du fond). Sur mobile, simple transparence.
-  const water = new THREE.Mesh(g.water, lowPower
-    ? new THREE.MeshPhysicalMaterial({ color: v.liquid, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0, envMapIntensity: 1.2 })
-    : new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 1.2, ior: 1.33, roughness: 0.03, attenuationColor: new THREE.Color(v.liquid), attenuationDistance: 6, envMapIntensity: 1.2 }));
-  water.renderOrder = 1;
-  // verre : coque transparente brillante (reflets + fresnel), dessinée après l'eau
-  const glass = new THREE.Mesh(g.glass, new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.12, roughness: 0.02, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02,
-    envMapIntensity: 2.6, side: THREE.DoubleSide, depthWrite: false, specularIntensity: 1,
-  }));
-  glass.renderOrder = 2;
-  const label = new THREE.Mesh(g.label, new THREE.MeshPhysicalMaterial({ map: makeLabelTexture(v), transparent: true, roughness: 0.55, metalness: 0, depthWrite: false, side: THREE.FrontSide }));
-  label.position.y = -0.55; label.renderOrder = 3;
-  const cap = new THREE.Mesh(g.cap, new THREE.MeshPhysicalMaterial({ color: v.cap, roughness: 0.35, metalness: 0.4, clearcoat: 0.6 }));
-  cap.position.y = 2.36;
-  group.add(water, glass, label, cap);
-  if (v.bubbles && !lowPower) {
-    const count = 60;
-    const inst = new THREE.InstancedMesh(g.bubble, new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, roughness: 0, envMapIntensity: 2 }), count);
-    inst.renderOrder = 2;
-    inst.userData.seeds = Array.from({ length: count }, () => ({ a: Math.random() * Math.PI * 2, r: Math.random() * 0.75, y: -2 + Math.random() * 2.9, s: 0.4 + Math.random() * 0.9, k: 0.5 + Math.random() }));
-    group.add(inst); group.userData.bubbles = inst;
-  }
-  group.userData.variant = v;
-  return group;
 }
 
 /* Produit depuis un GLB (si CONFIG.product.gltf) : on clone le modèle et on remplace la texture du mesh étiquette */
@@ -875,6 +1000,7 @@ function frame() {
   const t = clock.elapsedTime;
   syncTimeline();
   if (!renderer) return;
+  watchPerf(dt, t);
 
   // carrousel lissé + variante active
   carousel.pos = lerp(carousel.pos, carousel.target, 1 - Math.pow(0.0015, dt));
@@ -915,9 +1041,9 @@ function frame() {
     if (bub && p.visible && !reduceMotion) {
       const m = new THREE.Matrix4();
       bub.userData.seeds.forEach((b, k) => {
-        b.y += dt * b.k * 0.5; if (b.y > 0.9) b.y = -2;
-        const wob = Math.sin(t * 3 + k) * 0.03;
-        m.makeScale(b.s, b.s, b.s).setPosition(Math.cos(b.a) * b.r + wob, b.y, Math.sin(b.a) * b.r);
+        b.y += dt * b.k * 0.5; if (b.y > bub.userData.top) b.y = bub.userData.bottom;
+        const wob = Math.sin(t * 3 + k) * 0.03, rr = (petRadius(b.y) - 0.09) * b.f;
+        m.makeScale(b.s, b.s, b.s).setPosition(Math.cos(b.a) * rr + wob, b.y, Math.sin(b.a) * rr);
         bub.setMatrixAt(k, m);
       });
       bub.instanceMatrix.needsUpdate = true;
