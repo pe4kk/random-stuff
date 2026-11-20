@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Limpide — Eau de source</title>
+<meta name="description" content="Landing produit 3D pilotée par le scroll — démo Limpide, eau de source en bouteille de verre." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,300..900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  SCROLL-3D-LANDING — moteur                                          ║
+  ║  Tout ce qui change d'un site à l'autre est dans CONFIG (plus bas).  ║
+  ║  Le reste (scène, timeline, carrousel, loader, son) est générique.   ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+
+<style>
+  :root {
+    /* Couleurs de la variante active — réécrites en JS à chaque changement */
+    --c1: #9fd8ff;          /* lueur claire */
+    --c2: #06223f;          /* fond profond */
+    --accent: #e8f6ff;
+    --text: #f4fbff;
+    --text-dim: rgba(244, 251, 255, 0.68);
+    --line: rgba(244, 251, 255, 0.22);
+    --pill-bg: rgba(255, 255, 255, 0.92);
+    --pill-text: #06223f;
+    --font-display: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --gutter: clamp(16px, 3vw, 40px);
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    color-scheme: dark;
+  }
+  /* Le site a sa propre direction artistique sombre : on garde les mêmes tokens en clair/sombre,
+     mais on les redéclare pour respecter le contrat de thème. */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --text: #f4fbff; } }
+  :root[data-theme="dark"] { --text: #f4fbff; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  .lenis.lenis-stopped { overflow: clip; }
+  body {
+    margin: 0;
+    background: var(--c2);
+    color: var(--text);
+    font-family: var(--font-display);
+    font-stretch: 100%;
+    overflow-x: clip;
+    touch-action: pan-y;
+    transition: background-color 0.8s var(--ease);
+  }
+  body.is-loading { overflow: hidden; }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ── Scène 3D fixe derrière toute la page ─────────────────────────── */
+  #stage {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(90% 70% at 50% 46%, color-mix(in oklab, var(--c1) 40%, var(--c2)) 0%, var(--c2) 60%, #000 130%);
+    transition: background 0.8s var(--ease);
+  }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  body.is-grab { cursor: grab; }
+  body.is-grabbing { cursor: grabbing; }
+  body.is-pointer { cursor: pointer; }
+
+  /* ── Cadre : coins, barre de progression ──────────────────────────── */
+  .frame { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .frame i { position: absolute; width: 14px; height: 14px; border: 1px solid var(--line); }
+  .frame i:nth-child(1) { left: var(--gutter); top: 72px; border-right: 0; border-bottom: 0; }
+  .frame i:nth-child(2) { right: var(--gutter); top: 72px; border-left: 0; border-bottom: 0; }
+  .frame i:nth-child(3) { left: var(--gutter); bottom: var(--gutter); border-right: 0; border-top: 0; }
+  .frame i:nth-child(4) { right: var(--gutter); bottom: var(--gutter); border-left: 0; border-top: 0; }
+  .progress { position: fixed; left: 50%; top: 10px; width: min(180px, 40vw); height: 2px; transform: translateX(-50%); background: var(--line); z-index: 21; overflow: hidden; border-radius: 2px; }
+  .progress b { position: absolute; inset: 0; background: var(--text); transform-origin: left; transform: scaleX(0); }
+
+  /* ── Navbar ───────────────────────────────────────────────────────── */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; height: 64px; z-index: 20;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    padding: 0 var(--gutter);
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .nav__sound { justify-self: start; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+  .nav__bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 10px; }
+  .nav__bars span { width: 2px; height: 100%; background: currentColor; transform-origin: bottom; }
+  .nav__logo { font-family: var(--font-display); font-weight: 800; font-stretch: 125%; font-style: italic; font-size: 20px; letter-spacing: -0.01em; text-decoration: none; text-transform: uppercase; }
+  .nav__menu { justify-self: end; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+  .nav__menu-icon { display: grid; grid-template-columns: 4px 4px; gap: 2px; }
+  .nav__menu-icon span { width: 4px; height: 4px; background: currentColor; transition: transform 0.4s var(--ease); }
+  body.menu-open .nav__menu-icon span:nth-child(1) { transform: translate(3px, 3px); }
+  body.menu-open .nav__menu-icon span:nth-child(2) { transform: translate(-3px, 3px); }
+  body.menu-open .nav__menu-icon span:nth-child(3) { transform: translate(3px, -3px); }
+  body.menu-open .nav__menu-icon span:nth-child(4) { transform: translate(-3px, -3px); }
+
+  .menu {
+    position: fixed; inset: 0; z-index: 19; display: grid; place-items: center;
+    background: color-mix(in oklab, var(--c2) 88%, transparent);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    visibility: hidden; opacity: 0;
+  }
+  .menu ul { list-style: none; margin: 0; padding: 0; text-align: center; }
+  .menu a {
+    display: block; padding: 6px 0; text-decoration: none;
+    font-weight: 800; font-style: italic; font-stretch: 112%; text-transform: uppercase;
+    font-size: clamp(36px, 8vw, 84px); line-height: 1; letter-spacing: -0.02em;
+  }
+  .menu a:hover, .menu a:focus-visible { color: var(--c1); }
+  .menu__foot { position: absolute; bottom: var(--gutter); left: 0; right: 0; display: flex; justify-content: center; gap: 24px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+
+  /* ── Loader ───────────────────────────────────────────────────────── */
+  .loader { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: #02080f; }
+  .loader__mark { font-weight: 900; font-style: italic; font-stretch: 125%; text-transform: uppercase; font-size: clamp(48px, 12vw, 150px); letter-spacing: -0.03em; line-height: 1; position: relative; color: transparent; -webkit-text-stroke: 1px rgba(255,255,255,0.25); }
+  .loader__mark span { position: absolute; inset: 0; color: #fff; -webkit-text-stroke: 0; clip-path: inset(100% 0 0 0); }
+  .loader__pct { position: absolute; bottom: calc(var(--gutter) + 24px); left: 0; right: 0; text-align: center; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.4em; color: rgba(255,255,255,0.8); }
+
+  /* ── Sections : le texte vit au-dessus de la scène ────────────────── */
+  main { position: relative; z-index: 2; pointer-events: none; }
+  main a, main button, main input, main summary, main label, main form, .faq, .newsletter, .footer { pointer-events: auto; }
+  .section { position: relative; min-height: 100vh; min-height: 100svh; padding: 96px var(--gutter) calc(var(--gutter) + 40px); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; text-align: center; }
+  .section--top { justify-content: flex-start; }
+  /* Voile bas : garantit le contraste du texte blanc quand le produit (clair) passe derrière */
+  .section > * { position: relative; z-index: 1; }
+  .section::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 62%; z-index: 0; pointer-events: none;
+    background: linear-gradient(to top, color-mix(in oklab, var(--c2) 78%, transparent) 0%, color-mix(in oklab, var(--c2) 40%, transparent) 45%, transparent 100%); }
+  .faq::before, .newsletter::before { height: 100%; background: color-mix(in oklab, var(--c2) 35%, transparent); }
+  .h-display {
+    margin: 0; font-weight: 900; font-style: italic; font-stretch: 118%; text-transform: uppercase;
+    font-size: clamp(40px, 7.4vw, 112px); line-height: 0.88; letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .h-display--xl { font-size: clamp(56px, 13vw, 200px); }
+  .lede { max-width: 34ch; margin: 18px auto 0; font-size: clamp(15px, 1.25vw, 18px); line-height: 1.45; color: var(--text-dim); font-stretch: 100%; text-wrap: pretty; }
+  .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .split-line { overflow: hidden; padding-bottom: 0.06em; margin-bottom: -0.06em; }
+
+  /* Gamme : nom de la variante + flèches + pastilles */
+  .gamme__name { min-height: 2em; }
+  .gamme__controls { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 22px; }
+  .arrow { width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; transition: background 0.3s, border-color 0.3s; }
+  .arrow:hover, .arrow:focus-visible { background: rgba(255,255,255,0.1); border-color: var(--text); }
+  .dots { display: flex; gap: 8px; }
+  .dots button { width: 44px; height: 24px; display: grid; place-items: center; }
+  .dots button::after { content: ""; width: 100%; height: 2px; background: var(--line); transition: background 0.4s; }
+  .dots button[aria-current="true"]::after { background: var(--text); }
+  .hint { margin-top: 18px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); }
+
+  /* Bénéfices : pastille barrée + rail d'icônes */
+  .pill { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 18px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .pill__x { width: 20px; height: 20px; display: grid; place-items: center; background: var(--c1); color: var(--c2); font-size: 13px; }
+  .pill__t { position: relative; padding: 3px 8px; background: var(--pill-bg); color: var(--pill-text); }
+  .pill__t::after { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 1px; background: currentColor; transform-origin: left; transform: scaleX(var(--strike, 1)); }
+  .rail { position: fixed; right: var(--gutter); top: 50%; transform: translateY(-50%); z-index: 6; display: flex; flex-direction: column; gap: 14px; opacity: 0; visibility: hidden; }
+  .rail span { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(255,255,255,0.04); transition: background 0.4s, border-color 0.4s, transform 0.4s var(--ease); }
+  .rail span.is-active { background: rgba(255,255,255,0.16); border-color: var(--text); transform: scale(1.08); }
+  .rail svg { width: 20px; height: 20px; }
+
+  /* FAQ */
+  .faq { justify-content: flex-start; padding-top: 18vh; }
+  .faq__list { width: min(720px, 100%); margin: 40px auto 0; text-align: left; }
+  .faq details { border-top: 1px solid var(--line); }
+  .faq details:last-child { border-bottom: 1px solid var(--line); }
+  .faq summary { list-style: none; display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 20px 0; min-height: 44px; cursor: pointer; font-size: clamp(16px, 1.4vw, 19px); font-weight: 600; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; font-family: var(--font-mono); font-weight: 400; transition: transform 0.4s var(--ease); }
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq__a { overflow: hidden; }
+  .faq__a p { margin: 0; padding: 0 0 22px; color: var(--text-dim); line-height: 1.55; max-width: 60ch; }
+
+  /* Newsletter + footer */
+  .newsletter { justify-content: center; }
+  .newsletter form { display: flex; gap: 8px; width: min(520px, 100%); margin: 28px auto 0; }
+  .newsletter input { flex: 1; min-width: 0; min-height: 48px; padding: 0 16px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); font: 500 13px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; border-radius: 0; }
+  .newsletter input::placeholder { color: var(--text-dim); }
+  .newsletter input:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .btn { min-height: 48px; padding: 0 22px; background: var(--text); color: var(--c2); font: 600 12px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; position: relative; overflow: hidden; }
+  .btn:hover { background: var(--c1); }
+  .newsletter__msg { min-height: 1.5em; margin-top: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+  .footer { position: relative; z-index: 2; padding: 28px var(--gutter) calc(var(--gutter) + 8px); display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); border-top: 1px solid var(--line); background: color-mix(in oklab, var(--c2) 70%, #000); }
+  .footer nav { display: flex; gap: 18px; flex-wrap: wrap; }
+  .footer a { text-decoration: none; }
+  .footer a:hover { color: var(--text); }
+
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+
+  @media (max-width: 760px) {
+    .frame i:nth-child(1), .frame i:nth-child(2) { top: 64px; }
+    .rail { right: 10px; gap: 10px; }
+    .rail span { width: 36px; height: 36px; }
+    .section { padding-bottom: calc(var(--gutter) + 24px); }
+    .newsletter form { flex-direction: column; }
+    .nav__sound-label { display: none; }
+  }
+
+  /* Sans WebGL : la page reste lisible, le fond reste en dégradé */
+  html.no-webgl #stage canvas { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; }
+  }
+</style>
+
+<!-- GSAP (ScrollTrigger + SplitText sont gratuits depuis 3.13) -->
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/SplitText.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/",
+    "lenis": "https://cdn.jsdelivr.net/npm/lenis@1.3.23/dist/lenis.mjs"
+  }
+}
+</script>
+</head>
+<body class="is-loading">
+
+<div class="loader" aria-hidden="true">
+  <div class="loader__mark" data-brand>Limpide<span data-brand>Limpide</span></div>
+  <div class="loader__pct"><span data-pct>0</span>%</div>
+</div>
+
+<div id="stage" aria-hidden="true"></div>
+<div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="progress" aria-hidden="true"><b></b></div>
+
+<header class="nav">
+  <button class="nav__sound" type="button" aria-pressed="true" aria-label="Couper le son">
+    <span class="nav__bars" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+    <span class="nav__sound-label" data-sound-label>On</span>
+  </button>
+  <a class="nav__logo" href="#gamme" data-brand>Limpide</a>
+  <button class="nav__menu" type="button" aria-expanded="false" aria-controls="menu">
+    <span class="nav__menu-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+    Menu
+  </button>
+</header>
+
+<nav class="menu" id="menu" aria-label="Menu principal">
+  <ul data-menu></ul>
+  <div class="menu__foot" data-socials></div>
+</nav>
+
+<div class="rail" aria-hidden="true" data-rail></div>
+
+<main id="content">
+  <!-- Les sections sont générées depuis CONFIG.sections (voir renderSections). -->
+</main>
+
+<footer class="footer" data-footer></footer>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════
+   CONFIG — la seule partie à réécrire pour un nouveau site.
+   ════════════════════════════════════════════════════════════════════════ */
+window.CONFIG = {
+  brand: 'Limpide',
+  tagline: 'Eau de source en verre',
+  locale: 'fr',
+
+  /* Produit : 'bottle' | 'can' (procéduraux) ou { gltf: 'https://…/model.glb', labelMesh: 'Label' } */
+  product: {
+    type: 'bottle',
+    size: '75 cl',
+  },
+
+  /* Une entrée par variante. c1 = lueur claire, c2 = fond profond, cap = bouchon / accent 3D. */
+  variants: [
+    { id: 'source',  name: ['Source', 'Plate'],   desc: "Une eau de source faiblement minéralisée, filtrée par 40 mètres de granit. Rien d'ajouté, rien d'enlevé.",               c1: '#9fd8ff', c2: '#05213d', cap: '#dfeefa', liquid: '#cfefff' },
+    { id: 'bulles',  name: ['Fines', 'Bulles'],   desc: 'Des bulles fines et serrées, ajoutées à la source. Une effervescence nette qui ne pique pas.',                           c1: '#c4f1ff', c2: '#0a2c4c', cap: '#7fb6d8', liquid: '#e4f8ff', bubbles: true },
+    { id: 'yuzu',    name: ['Citron', 'Yuzu'],    desc: "Quelques gouttes d'extrait de yuzu et de citron de Menton. Zéro sucre, juste un éclat d'agrume.",                         c1: '#eef7a0', c2: '#16341f', cap: '#d9e35a', liquid: '#f6fbd6', bubbles: true },
+    { id: 'menthe',  name: ['Menthe', 'Concombre'], desc: 'La fraîcheur du concombre, une pointe de menthe poivrée. Une eau qui désaltère deux fois.',                            c1: '#aaf5d2', c2: '#053a2e', cap: '#5fd6a4', liquid: '#dcfbec' },
+    { id: 'sureau',  name: ['Fleur de', 'Sureau'], desc: 'Un parfum floral et délicat, infusé à froid. Pour les après-midi qui méritent mieux que de l’eau plate.',                c1: '#f1d8ff', c2: '#2a1242', cap: '#c79be6', liquid: '#f6ecff' },
+  ],
+
+  /* Bénéfices : "crossed" = ce que les autres font (barré), title = ce qu'on fait. icon = clé de ICONS. */
+  benefits: [
+    { icon: 'leaf',   crossed: 'Bouteille plastique', title: ['Verre', 'consigné'],      text: 'Chaque bouteille revient, est lavée et reremplie jusqu’à 50 fois. Le plastique, on a juste arrêté.' },
+    { icon: 'drop',   crossed: 'Résidu sec 450 mg/L',  title: ['Très faiblement', 'minéralisée'], text: '32 mg/L de résidu sec. Une eau légère, au goût neutre, qui accompagne tout.' },
+    { icon: 'shield', crossed: 'Eau traitée',          title: ['Source', 'protégée'],      text: 'Captée à 40 mètres sous un massif classé. Aucune désinfection, aucun traitement : elle n’en a pas besoin.' },
+    { icon: 'spark',  crossed: 'Sucres ajoutés',       title: ['Arômes', 'naturels'],      text: 'Nos versions aromatisées ne contiennent que des extraits de fruits et de plantes. Zéro sucre, zéro édulcorant.' },
+  ],
+
+  manifesto: ['Rien', "d'autre", "que l'eau"],
+  packshot: { eyebrow: 'La gamme', title: ['Cinq', 'eaux'] },
+
+  faq: [
+    { q: 'D’où vient l’eau Limpide ?', a: 'D’une source unique captée à 40 mètres de profondeur, dans un massif granitique protégé. Elle est embouteillée sur place, à la sortie de la source.' },
+    { q: 'Comment fonctionne la consigne ?', a: 'Rapportez vos bouteilles vides dans un point de collecte partenaire : elles sont lavées, contrôlées puis reremplies. Chaque bouteille fait en moyenne 50 rotations.' },
+    { q: 'Les versions aromatisées contiennent-elles du sucre ?', a: 'Non. Elles contiennent uniquement de l’eau de source et des extraits naturels de fruits ou de plantes. 0 kcal, 0 g de sucre, aucun édulcorant.' },
+    { q: 'Quelle est la composition minérale ?', a: 'Résidu sec à 180 °C : 32 mg/L. Calcium 4 mg/L, magnésium 1 mg/L, sodium 3 mg/L, pH 6,8. Convient à la préparation des aliments des nourrissons.' },
+    { q: 'Comment conserver une bouteille entamée ?', a: 'Au frais, bouchée, et à consommer dans les 3 jours. Avant ouverture, à l’abri de la lumière et de la chaleur.' },
+  ],
+
+  newsletter: { title: ['Restez', 'à la source'], text: 'Nouvelles variantes, points de consigne près de chez vous. Un mail par mois, pas plus.', placeholder: 'Votre adresse mail', cta: "S'inscrire", success: 'Merci ! Vous êtes inscrit·e.' },
+  socials: [{ label: 'Instagram', href: '#' }, { label: 'TikTok', href: '#' }],
+  legal: [{ label: 'Mentions légales', href: '#' }, { label: 'CGU', href: '#' }, { label: 'Confidentialité', href: '#' }],
+  footerNote: '© 2026 Limpide — marque fictive, démo',
+
+  /* Sons : 'synth' = générés en Web Audio (aucun fichier), ou des URLs mp3 par clé. */
+  sounds: 'synth',
+
+  /* Keyframes 3D : un état par section, dans l'ordre des sections.
+     Champs : camZ, camY, x, y, scale, rotX, rotY (spin), rotZ (inclinaison), spread (écart des autres produits, 1 = carrousel),
+     others (0..1 visibilité des produits non actifs), swipe (drag autorisé). Les valeurs manquantes héritent de la section précédente. */
+  keyframes: {
+    gamme:      { camZ: 19, camY: 0.4, x: 0, y: 1.0, scale: 0.92, rotX: 0, rotY: 0, rotZ: 0.06, spread: 1, others: 1, swipe: true },
+    profil:     { camZ: 15, camY: 0.8, y: 1.4, scale: 1.0, rotY: Math.PI * 0.15, rotZ: 0, spread: 3.2, others: 0, swipe: false },
+    benefit1:   { camZ: 11, camY: 0.9, x: -1.7, y: 1.0, scale: 1.12, rotX: 0.18, rotY: Math.PI * 0.6, rotZ: -0.28 },
+    benefit2:   { camZ: 10, camY: 0.4, x: 1.8, y: 0.7, scale: 1.2, rotX: -0.1, rotY: Math.PI * 1.1, rotZ: 0.24 },
+    benefit3:   { camZ: 11.5, camY: 1.6, x: -1.6, y: 1.2, scale: 1.12, rotX: 0.32, rotY: Math.PI * 1.55, rotZ: -0.16 },
+    benefit4:   { camZ: 10.5, camY: 0.6, x: 1.7, y: 0.9, scale: 1.16, rotX: 0.05, rotY: Math.PI * 2.05, rotZ: 0.3 },
+    manifeste:  { camZ: 16, camY: 0.6, x: 0, y: 2.6, scale: 0.8, rotX: 0, rotY: Math.PI * 2, rotZ: 0.1 },
+    packshot:   { camZ: 21, camY: 0.6, x: 0, y: 1.3, scale: 0.95, rotX: 0.04, rotY: Math.PI * 2, rotZ: 0.22, spread: 0.8, others: 1, swipe: true },
+    faq:        { camZ: 21, camY: 0.6, y: 12, swipe: false },
+    newsletter: { y: 12 },
+  },
+};
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import Lenis from 'lenis';
+
+const C = window.CONFIG;
+const { gsap, ScrollTrigger, SplitText } = window;
+gsap.registerPlugin(ScrollTrigger, SplitText);
+
+/* ── Helpers ──────────────────────────────────────────────────────────── */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+const lerp = (a, b, t) => a + (b - a) * t;
+const wrap = (v, min, max) => { const s = max - min; return ((((v - min) % s) + s) % s) + min; };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lines = (arr) => arr.map((l) => `<span class="split-line"><span class="split-inner" style="display:block">${esc(l)}</span></span>`).join('');
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const lowPower = isIOS || innerWidth < 1024;
+const N = C.variants.length;
+
+const ICONS = {
+  leaf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14Z"/><path d="M5 19 13 11"/></svg>',
+  drop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M18 6l-3 3M9 15l-3 3"/></svg>',
+  bolt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10Z"/></svg>',
+};
+
+/* ── 1. Rendu du DOM depuis CONFIG ────────────────────────────────────── */
+function renderSections() {
+  const v0 = C.variants[0];
+  const s = [];
+  s.push(`<section class="section" id="gamme" data-key="gamme" data-snap aria-label="La gamme">
+    <p class="eyebrow">${esc(C.tagline)} · ${esc(C.product.size || '')}</p>
+    <h1 class="h-display gamme__name" data-variant-name aria-live="polite">${lines(v0.name)}</h1>
+    <div class="gamme__controls">
+      <button class="arrow" type="button" data-prev aria-label="Variante précédente"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3 5 8l5 5"/></svg></button>
+      <div class="dots" role="group" aria-label="Choisir une variante">${C.variants.map((v, i) => `<button type="button" data-dot="${i}" aria-label="${esc(v.name.join(' '))}" aria-current="${i === 0}"></button>`).join('')}</div>
+      <button class="arrow" type="button" data-next aria-label="Variante suivante"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 5 5-5 5"/></svg></button>
+    </div>
+    <p class="hint">Glisser pour changer · Scroller pour découvrir</p>
+  </section>`);
+  s.push(`<section class="section" id="profil" data-key="profil" data-snap aria-label="Profil de la variante">
+    <h2 class="h-display" data-variant-name-2>${lines(v0.name)}</h2>
+    <p class="lede" data-variant-desc>${esc(v0.desc)}</p>
+  </section>`);
+  C.benefits.forEach((b, i) => s.push(`<section class="section" id="${i === 0 ? 'benefices' : 'benefit' + (i + 1)}" data-key="benefit${i + 1}" data-benefit="${i}" aria-label="${esc(b.title.join(' '))}">
+    <p class="pill"><span class="pill__x" aria-hidden="true">×</span><span class="pill__t"><span class="sr-only">Pas de : </span>${esc(b.crossed)}</span></p>
+    <h2 class="h-display" data-split>${lines(b.title)}</h2>
+    <p class="lede" data-fade>${esc(b.text)}</p>
+  </section>`));
+  s.push(`<section class="section" id="manifeste" data-key="manifeste" aria-label="Manifeste">
+    <h2 class="h-display h-display--xl" data-split>${lines(C.manifesto)}</h2>
+  </section>`);
+  s.push(`<section class="section" id="packshot" data-key="packshot" aria-label="${esc(C.packshot.eyebrow)}">
+    <p class="eyebrow" data-fade>${esc(C.packshot.eyebrow)}</p>
+    <h2 class="h-display" data-split>${lines(C.packshot.title)}</h2>
+    <p class="hint" data-fade>Glisser pour parcourir</p>
+  </section>`);
+  s.push(`<section class="section faq" id="faq" data-key="faq" aria-label="Questions fréquentes">
+    <h2 class="h-display" data-split>${lines(['Foire aux', 'questions'])}</h2>
+    <div class="faq__list">${C.faq.map((f) => `<details><summary>${esc(f.q)}</summary><div class="faq__a"><p>${esc(f.a)}</p></div></details>`).join('')}</div>
+  </section>`);
+  const n = C.newsletter;
+  s.push(`<section class="section newsletter" id="newsletter" data-key="newsletter" aria-label="Newsletter">
+    <h2 class="h-display" data-split>${lines(n.title)}</h2>
+    <p class="lede" data-fade>${esc(n.text)}</p>
+    <form novalidate>
+      <label class="sr-only" for="nl-email">${esc(n.placeholder)}</label>
+      <input id="nl-email" type="email" required autocomplete="email" placeholder="${esc(n.placeholder)}" />
+      <button class="btn" type="submit">${esc(n.cta)}</button>
+    </form>
+    <p class="newsletter__msg" role="status"></p>
+  </section>`);
+  $('#content').innerHTML = s.join('');
+
+  $('[data-rail]').innerHTML = C.benefits.map((b) => `<span>${ICONS[b.icon] || ICONS.spark}</span>`).join('');
+  const menu = [['Gamme', '#gamme'], ['Bénéfices', '#benefices'], ['FAQ', '#faq'], ['Newsletter', '#newsletter']];
+  $('[data-menu]').innerHTML = menu.map(([l, h]) => `<li><a href="${h}">${l}</a></li>`).join('');
+  $('[data-socials]').innerHTML = C.socials.map((x) => `<a href="${esc(x.href)}">${esc(x.label)}</a>`).join('');
+  $('[data-footer]').innerHTML = `<span>${esc(C.footerNote)}</span><nav>${C.legal.concat(C.socials).map((x) => `<a href="${esc(x.href)}">${esc(x.label)}</a>`).join('')}</nav>`;
+  $$('[data-brand]').forEach((el) => { el.childNodes[0].nodeValue = C.brand; });
+  document.title = `${C.brand} — ${C.tagline}`;
+}
+renderSections();
+
+/* ── 2. Smooth scroll (Lenis) + ScrollTrigger ─────────────────────────── */
+const lenis = reduceMotion ? null : new Lenis({ autoRaf: false, lerp: 0.09, wheelMultiplier: 0.9 });
+const getScroll = () => (lenis ? lenis.animatedScroll : scrollY);
+const scrollTo = (target, opts = {}) => {
+  const y = typeof target === 'number' ? target : $(target)?.offsetTop ?? 0;
+  if (lenis) lenis.scrollTo(y, { duration: 1.4, easing: (t) => 1 - Math.pow(1 - t, 4), ...opts });
+  else scrollTo_native(y);
+};
+const scrollTo_native = (y) => window.scrollTo({ top: y, behavior: reduceMotion ? 'auto' : 'smooth' });
+if (lenis) {
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add((t) => lenis.raf(t * 1000));
+  gsap.ticker.lagSmoothing(0);
+  lenis.stop();
+}
+
+/* Aimantation douce sur les sections [data-snap] (gamme → profil) */
+let snapTimer;
+const snapPoints = () => $$('[data-snap]').map((el) => el.offsetTop);
+function maybeSnap() {
+  if (!lenis || lenis.isStopped || swipe.holding) return;
+  const y = getScroll();
+  const pts = snapPoints();
+  const last = pts[pts.length - 1];
+  if (y >= last - 2) return; // on n'aimante qu'entre les points, jamais en arrière depuis la suite
+  const nearest = pts.reduce((a, b) => (Math.abs(b - y) < Math.abs(a - y) ? b : a));
+  if (Math.abs(nearest - y) > 2) lenis.scrollTo(nearest, { duration: 0.9, easing: (t) => 1 - Math.pow(1 - t, 3) });
+}
+const scheduleSnap = () => { clearTimeout(snapTimer); snapTimer = setTimeout(maybeSnap, 180); };
+if (lenis) lenis.on('scroll', ({ velocity }) => { if (Math.abs(velocity) < 0.2) scheduleSnap(); });
+
+/* ── 3. Son (Web Audio synthétisé, débloqué au premier geste) ─────────── */
+const sound = (() => {
+  let ctx = null, unlocked = false;
+  let muted = store.get('sound') === 'off';
+  const buffers = {};
+  const init = () => { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); };
+  const unlock = () => {
+    init(); unlocked = true;
+    if (typeof C.sounds === 'object') Object.entries(C.sounds).forEach(async ([k, url]) => { try { buffers[k] = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer()); } catch {} });
+    ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach((e) => removeEventListener(e, unlock));
+  };
+  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach((e) => addEventListener(e, unlock, { passive: true }));
+  const env = (g, t, a, d, peak) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
+  const synth = {
+    // goutte d'eau : sinus qui monte vite (signature "liquide")
+    drop() { const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(1500, t + 0.07); env(g, t, 0.005, 0.12, 0.25); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.2); },
+    // clic d'interface
+    click() { const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'triangle'; o.frequency.value = 1800; env(g, t, 0.002, 0.04, 0.12); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + 0.08); },
+    // souffle : bruit filtré qui balaie (transition de section)
+    whoosh() {
+      const t = ctx.currentTime, len = 0.7, b = ctx.createBuffer(1, ctx.sampleRate * len, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = b; f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(2400, t + len * 0.6);
+      env(g, t, 0.15, 0.5, 0.12); src.connect(f).connect(g).connect(ctx.destination); src.start(t);
+    },
+  };
+  const play = (name) => {
+    if (!unlocked || muted || !ctx) return;
+    if (buffers[name]) { const s = ctx.createBufferSource(), g = ctx.createGain(); g.gain.value = 0.5; s.buffer = buffers[name]; s.connect(g).connect(ctx.destination); s.start(); return; }
+    if (C.sounds === 'synth' && synth[name]) synth[name]();
+  };
+  return { play, get muted() { return muted; }, set muted(v) { muted = v; store.set('sound', v ? 'off' : 'on'); } };
+})();
+
+/* Bouton son : barres animées */
+const soundBtn = $('.nav__sound');
+const bars = $$('.nav__bars span');
+let barsTl;
+function renderSound() {
+  const on = !sound.muted;
+  soundBtn.setAttribute('aria-pressed', String(on));
+  soundBtn.setAttribute('aria-label', on ? 'Couper le son' : 'Activer le son');
+  $('[data-sound-label]').textContent = on ? 'On' : 'Off';
+  barsTl?.kill();
+  if (on && !reduceMotion) {
+    barsTl = gsap.timeline({ repeat: -1 });
+    bars.forEach((b, i) => barsTl.to(b, { scaleY: 0.25 + Math.random() * 0.75, duration: 0.25, repeat: 3, yoyo: true, ease: 'sine.inOut' }, i * 0.08));
+  } else gsap.to(bars, { scaleY: 0.2, duration: 0.3 });
+}
+soundBtn.addEventListener('click', () => { sound.muted = !sound.muted; renderSound(); sound.play('click'); });
+renderSound();
+
+/* ── 4. Scène Three.js ────────────────────────────────────────────────── */
+const stage = $('#stage');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: !lowPower, alpha: false, powerPreference: 'high-performance' });
+} catch (e) {
+  document.documentElement.classList.add('no-webgl');
+}
+
+const state = { ...C.keyframes.gamme, swipe: true }; // valeurs animées par la timeline
+const intro = { y: -9, s: 0.55 }; // animé une seule fois par l'intro, appliqué en plus de state
+const kfKeys = ['camZ', 'camY', 'x', 'y', 'scale', 'rotX', 'rotY', 'rotZ', 'spread', 'others'];
+const carousel = { pos: 0, target: 0, spacing: 3.3, index: 0 };
+const swipe = { holding: false, startX: 0, startY: 0, lastX: 0, dir: 0, moved: 0, velocity: 0 };
+const colors = { c1: new THREE.Color(C.variants[0].c1), c2: new THREE.Color(C.variants[0].c2), t1: new THREE.Color(C.variants[0].c1), t2: new THREE.Color(C.variants[0].c2) };
+let scene, camera, products = [], backdrop, raycaster, pmrem;
+
+if (renderer) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, lowPower ? 1.5 : 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  stage.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(24, innerWidth / innerHeight, 0.1, 200);
+  pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.03).texture;
+  raycaster = new THREE.Raycaster();
+
+  /* Fond : dégradé radial + reflets "caustiques" en shader, réfracté par le verre */
+  backdrop = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.ShaderMaterial({
+      depthWrite: false, depthTest: false,
+      uniforms: { uC1: { value: colors.c1 }, uC2: { value: colors.c2 }, uTime: { value: 0 }, uAspect: { value: innerWidth / innerHeight } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }',
+      fragmentShader: `
+        uniform vec3 uC1; uniform vec3 uC2; uniform float uTime; uniform float uAspect; varying vec2 vUv;
+        void main(){
+          vec2 p = (vUv - vec2(0.5, 0.46)) * vec2(uAspect, 1.0);
+          float r = length(p);
+          // lueur contenue derrière le produit : le texte blanc doit rester lisible
+          vec3 glow = mix(uC2, uC1, 0.42);
+          vec3 col = mix(glow, uC2, smoothstep(0.0, 0.62, r));
+          col = mix(col, uC2 * 0.3, smoothstep(0.55, 1.3, r));
+          // fines lignes de lumière qui ondulent, comme le fond d'une piscine
+          vec2 q = p * 7.0;
+          float c = sin(q.x * 1.6 + uTime * 0.35 + sin(q.y * 1.3 + uTime * 0.25) * 1.6)
+                  + sin(q.y * 1.9 - uTime * 0.3 + sin(q.x * 1.1 - uTime * 0.2) * 1.4);
+          c = pow(clamp(1.0 - abs(c) * 1.2, 0.0, 1.0), 8.0);
+          col += uC1 * c * 0.07 * (1.0 - smoothstep(0.1, 0.9, r));
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    }),
+  );
+  backdrop.frustumCulled = false;
+  backdrop.renderOrder = -10;
+  scene.add(backdrop);
+
+  const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(4, 6, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffffff, 1.6); rim.position.set(-6, 2, -4); scene.add(rim);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+}
+
+/* Étiquette : texture canvas générée (aucun asset nécessaire) */
+function makeLabelTexture(v) {
+  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 512;
+  const g = cv.getContext('2d');
+  g.fillStyle = 'rgba(255,255,255,0.0)'; g.fillRect(0, 0, 2048, 512);
+  // bande givrée centrée sur la face avant (u = 0.5)
+  const grd = g.createLinearGradient(0, 0, 2048, 0);
+  grd.addColorStop(0.18, 'rgba(255,255,255,0)'); grd.addColorStop(0.3, 'rgba(255,255,255,0.78)'); grd.addColorStop(0.7, 'rgba(255,255,255,0.78)'); grd.addColorStop(0.82, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 2048, 512);
+  g.fillStyle = v.c2; g.textAlign = 'center';
+  g.font = 'italic 900 150px Archivo, Helvetica, Arial, sans-serif';
+  g.fillText(C.brand.toUpperCase(), 1024, 250);
+  g.font = '500 44px "JetBrains Mono", monospace';
+  g.fillText(v.name.join(' ').toUpperCase(), 1024, 340);
+  g.font = '400 30px "JetBrains Mono", monospace';
+  g.globalAlpha = 0.7; g.fillText(`${C.tagline.toUpperCase()} · ${C.product.size || ''}`, 1024, 400);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+/* Bouteille procédurale : profil tourné (Lathe) — verre + eau + bouchon + étiquette + bulles */
+const BOTTLE_PROFILE = [
+  [0.0, -2.1], [0.78, -2.1], [0.88, -2.04], [0.92, -1.9], [0.93, 0.55], [0.9, 0.85], [0.78, 1.15], [0.55, 1.5], [0.4, 1.78], [0.37, 2.0], [0.4, 2.04], [0.4, 2.12], [0.37, 2.14],
+];
+function bottleGeometry(scaleR = 1, top = Infinity, close = false) {
+  const pts = [];
+  for (const [r, y] of BOTTLE_PROFILE) { if (y > top) break; pts.push(new THREE.Vector2(r * scaleR, y)); }
+  if (close) { const last = pts[pts.length - 1]; pts.push(new THREE.Vector2(last.x * 0.98, top), new THREE.Vector2(0, top)); }
+  return new THREE.LatheGeometry(pts, lowPower ? 48 : 96);
+}
+const shared = {};
+function sharedGeos() {
+  if (shared.glass) return shared;
+  shared.glass = bottleGeometry(1);
+  shared.water = bottleGeometry(0.93, 0.95, true);
+  shared.cap = new THREE.CylinderGeometry(0.43, 0.43, 0.46, 64);
+  shared.label = new THREE.CylinderGeometry(0.945, 0.945, 1.25, 96, 1, true, Math.PI, Math.PI * 2);
+  shared.bubble = new THREE.SphereGeometry(0.03, 8, 6);
+  return shared;
+}
+
+/* Canette procédurale : profil Lathe + étiquette pleine hauteur (opaque, métal) */
+const CAN_PROFILE = [[0, -2.05], [0.62, -2.05], [0.74, -1.98], [0.8, -1.8], [0.8, 1.6], [0.74, 1.85], [0.62, 1.98], [0.64, 2.02], [0.6, 2.05], [0, 2.02]];
+function createCan(v) {
+  if (!shared.can) {
+    shared.can = new THREE.LatheGeometry(CAN_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), lowPower ? 48 : 96);
+    shared.canLabel = new THREE.CylinderGeometry(0.805, 0.805, 3.3, 96, 1, true, Math.PI, Math.PI * 2);
+  }
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(shared.can, new THREE.MeshPhysicalMaterial({ color: 0xc8ccd2, metalness: 1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 }));
+  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1024;
+  const x = cv.getContext('2d');
+  const grd = x.createLinearGradient(0, 0, 0, 1024); grd.addColorStop(0, v.c1); grd.addColorStop(1, v.c2);
+  x.fillStyle = grd; x.fillRect(0, 0, 2048, 1024);
+  x.save(); x.translate(1024, 520); x.rotate(-Math.PI / 2); x.fillStyle = '#fff'; x.textAlign = 'center';
+  x.font = 'italic 900 230px Archivo, Helvetica, Arial, sans-serif'; x.fillText(C.brand.toUpperCase(), 0, 80); x.restore();
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = '500 46px "JetBrains Mono", monospace'; x.fillText(v.name.join(' ').toUpperCase(), 1024, 980);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const label = new THREE.Mesh(shared.canLabel, new THREE.MeshPhysicalMaterial({ map: tex, metalness: 0.55, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
+  label.position.y = -0.1;
+  g.add(body, label); g.userData.variant = v;
+  return g;
+}
+
+function createBottle(v) {
+  const g = sharedGeos();
+  const group = new THREE.Group();
+  // eau : transmission (réfraction du fond). Sur mobile, simple transparence.
+  const water = new THREE.Mesh(g.water, lowPower
+    ? new THREE.MeshPhysicalMaterial({ color: v.liquid, transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0, envMapIntensity: 1.2 })
+    : new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 1.2, ior: 1.33, roughness: 0.03, attenuationColor: new THREE.Color(v.liquid), attenuationDistance: 6, envMapIntensity: 1.2 }));
+  water.renderOrder = 1;
+  // verre : coque transparente brillante (reflets + fresnel), dessinée après l'eau
+  const glass = new THREE.Mesh(g.glass, new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.12, roughness: 0.02, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02,
+    envMapIntensity: 2.6, side: THREE.DoubleSide, depthWrite: false, specularIntensity: 1,
+  }));
+  glass.renderOrder = 2;
+  const label = new THREE.Mesh(g.label, new THREE.MeshPhysicalMaterial({ map: makeLabelTexture(v), transparent: true, roughness: 0.55, metalness: 0, depthWrite: false, side: THREE.FrontSide }));
+  label.position.y = -0.55; label.renderOrder = 3;
+  const cap = new THREE.Mesh(g.cap, new THREE.MeshPhysicalMaterial({ color: v.cap, roughness: 0.35, metalness: 0.4, clearcoat: 0.6 }));
+  cap.position.y = 2.36;
+  group.add(water, glass, label, cap);
+  if (v.bubbles && !lowPower) {
+    const count = 60;
+    const inst = new THREE.InstancedMesh(g.bubble, new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, roughness: 0, envMapIntensity: 2 }), count);
+    inst.renderOrder = 2;
+    inst.userData.seeds = Array.from({ length: count }, () => ({ a: Math.random() * Math.PI * 2, r: Math.random() * 0.75, y: -2 + Math.random() * 2.9, s: 0.4 + Math.random() * 0.9, k: 0.5 + Math.random() }));
+    group.add(inst); group.userData.bubbles = inst;
+  }
+  group.userData.variant = v;
+  return group;
+}
+
+/* Produit depuis un GLB (si CONFIG.product.gltf) : on clone le modèle et on remplace la texture du mesh étiquette */
+let gltfScene = null;
+async function createFromGltf(v) {
+  const root = gltfScene.clone(true);
+  const lm = C.product.labelMesh;
+  root.traverse((o) => { if (o.isMesh && lm && o.name === lm) { o.material = o.material.clone(); o.material.map = makeLabelTexture(v); o.material.needsUpdate = true; } });
+  const g = new THREE.Group(); g.add(root); g.userData.variant = v; return g;
+}
+
+/* ── 5. Chargement : progression réelle + durée minimale ─────────────── */
+const pctEl = $('[data-pct]');
+const pct = { v: 0, target: 0 };
+gsap.to(pct, { v: 100, duration: 2.4, ease: 'none', onUpdate: () => { const v = Math.min(pct.v, pct.target); pctEl.textContent = Math.round(v); gsap.set('.loader__mark span', { clipPath: `inset(${100 - v}% 0 0 0)` }); } });
+
+async function buildProducts() {
+  if (!renderer) return;
+  if (C.product.gltf) {
+    const manager = new THREE.LoadingManager();
+    manager.onProgress = (_u, l, t) => (pct.target = (l / t) * 100);
+    gltfScene = (await new GLTFLoader(manager).loadAsync(C.product.gltf)).scene;
+  }
+  // les textures d'étiquette utilisent les polices web : on les attend (2 s max)
+  try { await Promise.race([Promise.all([document.fonts.load('italic 900 150px Archivo'), document.fonts.load('500 44px "JetBrains Mono"')]), new Promise((r) => setTimeout(r, 2000))]); } catch {}
+  const copies = Math.max(2, Math.ceil((lowPower ? 8 : 12) / N));
+  for (let c = 0; c < copies; c++) {
+    for (const v of C.variants) {
+      const p = C.product.gltf ? await createFromGltf(v) : C.product.type === 'can' ? createCan(v) : createBottle(v);
+      p.userData.slot = products.length;
+      products.push(p); scene.add(p);
+    }
+  }
+  carousel.span = products.length * carousel.spacing;
+}
+
+/* ── 6. Variante active : couleurs, textes, son ───────────────────────── */
+const nameEls = [$('[data-variant-name]'), $('[data-variant-name-2]')];
+const descEl = $('[data-variant-desc]');
+function applyColors(i) {
+  const v = C.variants[i];
+  colors.t1.set(v.c1); colors.t2.set(v.c2);
+  document.documentElement.style.setProperty('--c1', v.c1);
+  document.documentElement.style.setProperty('--c2', v.c2);
+  $$('[data-dot]').forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
+}
+function setVariant(i) {
+  i = wrap(i, 0, N);
+  if (i === carousel.index) return;
+  carousel.index = i;
+  const v = C.variants[i];
+  applyColors(i);
+  nameEls.forEach((el) => {
+    const inner = $$('.split-inner', el);
+    gsap.to(inner, { yPercent: -110, duration: reduceMotion ? 0 : 0.28, ease: 'power2.in', stagger: 0.04, onComplete() {
+      el.innerHTML = lines(v.name);
+      gsap.from($$('.split-inner', el), { yPercent: 110, duration: reduceMotion ? 0 : 0.6, ease: 'power3.out', stagger: 0.06 });
+    } });
+  });
+  gsap.to(descEl, { autoAlpha: 0, y: 8, duration: 0.2, onComplete() { descEl.textContent = v.desc; gsap.to(descEl, { autoAlpha: 1, y: 0, duration: 0.45 }); } });
+  sound.play('drop');
+}
+const goTo = (slot) => { carousel.target = slot * carousel.spacing; };
+const current = () => Math.round(carousel.target / carousel.spacing);
+$('[data-prev]').addEventListener('click', () => goTo(current() - 1));
+$('[data-next]').addEventListener('click', () => goTo(current() + 1));
+$$('[data-dot]').forEach((d) => d.addEventListener('click', () => { const k = +d.dataset.dot; const cur = current(); const delta = wrap(k - wrap(cur, 0, N), -N / 2, N / 2); goTo(cur + Math.round(delta)); }));
+addEventListener('keydown', (e) => {
+  if (!state.swipe || e.target.closest('input, textarea')) return;
+  if (e.key === 'ArrowRight') goTo(current() + 1);
+  if (e.key === 'ArrowLeft') goTo(current() - 1);
+});
+
+/* ── 7. Drag / swipe horizontal + clic sur produit ───────────────────── */
+const isUI = (t) => t.closest('a, button, input, label, summary, details, form, .menu');
+addEventListener('pointerdown', (e) => {
+  if (!state.swipe || !renderer || isUI(e.target) || document.body.classList.contains('is-loading')) return;
+  Object.assign(swipe, { holding: true, startX: e.clientX, startY: e.clientY, lastX: e.clientX, dir: 0, moved: 0, velocity: 0 });
+});
+addEventListener('pointermove', (e) => {
+  pointer.x = e.clientX; pointer.y = e.clientY;
+  if (!swipe.holding) return hoverCursor(e);
+  const dx = e.clientX - swipe.lastX;
+  if (swipe.dir === 0 && (Math.abs(e.clientX - swipe.startX) > 6 || Math.abs(e.clientY - swipe.startY) > 6)) {
+    swipe.dir = Math.abs(e.clientX - swipe.startX) > Math.abs(e.clientY - swipe.startY) ? 1 : 2;
+    if (swipe.dir === 1) { lenis?.stop(); document.body.classList.add('is-grabbing'); }
+  }
+  if (swipe.dir === 1) {
+    const k = (carousel.spacing * 2.2) / innerWidth; // ~ un produit par demi-écran glissé
+    carousel.target -= dx * k;
+    swipe.velocity = dx * k;
+    swipe.moved += Math.abs(dx);
+  }
+  swipe.lastX = e.clientX;
+});
+const endSwipe = (e) => {
+  if (!swipe.holding) return;
+  swipe.holding = false;
+  document.body.classList.remove('is-grabbing');
+  if (swipe.dir === 1) {
+    carousel.target = Math.round((carousel.target - swipe.velocity * 6) / carousel.spacing) * carousel.spacing; // inertie puis aimant
+    lenis?.start();
+  } else if (swipe.dir === 0 && e.type === 'pointerup') clickProduct(e);
+  swipe.dir = 0;
+};
+addEventListener('pointerup', endSwipe);
+addEventListener('pointercancel', endSwipe);
+
+const pointer = { x: innerWidth / 2, y: innerHeight / 2, sx: 0, sy: 0 };
+function pick(e) {
+  if (!renderer) return null;
+  const m = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(m, camera);
+  const hits = raycaster.intersectObjects(products.filter((p) => p.visible), true);
+  if (!hits.length) return null;
+  let o = hits[0].object; while (o.parent && !products.includes(o)) o = o.parent; return o;
+}
+function clickProduct(e) {
+  const p = pick(e); if (!p) return;
+  const slotOffset = Math.round(p.userData.offset / carousel.spacing);
+  if (slotOffset === 0) { if (state.spread <= 1.01 && getScroll() < innerHeight * 0.5) { sound.play('whoosh'); scrollTo('#profil'); } }
+  else goTo(current() + slotOffset);
+}
+function hoverCursor(e) {
+  const b = document.body.classList;
+  if (!state.swipe || isUI(e.target)) { b.remove('is-grab', 'is-pointer'); return; }
+  const p = pick(e);
+  b.toggle('is-pointer', !!p); b.toggle('is-grab', !p);
+}
+
+/* ── 8. Timeline pilotée par le scroll ────────────────────────────────
+   Le temps de la timeline = la position de scroll en pixels. Chaque section
+   ajoute un tween dont la durée = la distance entre son haut et celui de la
+   précédente : quand le haut d'une section touche le haut de l'écran, la
+   scène est exactement dans l'état de sa keyframe. */
+let master, sectionStates = [];
+function buildTimeline() {
+  master?.kill();
+  const sections = $$('#content > section');
+  const maxScroll = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+  let acc = { ...C.keyframes[sections[0].dataset.key] };
+  Object.assign(state, acc);
+  sectionStates = [{ top: 0, swipe: !!acc.swipe }];
+  master = gsap.timeline({ paused: true, defaults: { ease: 'power1.inOut' } });
+  for (let i = 1; i < sections.length; i++) {
+    const from = Math.min(sections[i - 1].offsetTop, maxScroll);
+    const to = Math.min(sections[i].offsetTop, maxScroll);
+    acc = { ...acc, ...(C.keyframes[sections[i].dataset.key] || {}) };
+    const tween = {}; kfKeys.forEach((k) => { if (acc[k] !== undefined) tween[k] = acc[k]; });
+    if (to > from) master.to(state, { ...tween, duration: to - from }, from);
+    sectionStates.push({ top: sections[i].offsetTop, swipe: !!acc.swipe });
+  }
+  master.to({}, { duration: Math.max(0.001, maxScroll - master.duration()) }, master.duration());
+  master.maxScroll = maxScroll;
+}
+function syncTimeline() {
+  if (!master) return;
+  const y = getScroll();
+  master.time(clamp(y, 0, master.duration()));
+  gsap.set('.progress b', { scaleX: y / master.maxScroll });
+  // drag autorisé selon la section qui occupe le milieu de l'écran (juste en scroll avant comme arrière)
+  const mid = y + innerHeight * 0.5;
+  let sw = sectionStates[0].swipe;
+  for (const s of sectionStates) if (s.top <= mid) sw = s.swipe;
+  state.swipe = sw;
+}
+
+/* Révélations de texte et états par section */
+function buildReveals() {
+  $$('[data-split]').forEach((el) => {
+    const inner = $$('.split-inner', el);
+    gsap.set(inner, { yPercent: 110 });
+    ScrollTrigger.create({ trigger: el, start: 'top 85%', end: 'bottom top',
+      onEnter: () => gsap.to(inner, { yPercent: 0, duration: 0.9, ease: 'power4.out', stagger: 0.08, overwrite: true }),
+      onLeaveBack: () => gsap.to(inner, { yPercent: 110, duration: 0.4, ease: 'power2.in', overwrite: true }) });
+  });
+  $$('[data-fade]').forEach((el) => {
+    gsap.set(el, { autoAlpha: 0, y: 16 });
+    ScrollTrigger.create({ trigger: el, start: 'top 90%',
+      onEnter: () => gsap.to(el, { autoAlpha: 1, y: 0, duration: 0.8, delay: 0.2, ease: 'power3.out', overwrite: true }),
+      onLeaveBack: () => gsap.to(el, { autoAlpha: 0, y: 16, duration: 0.3, overwrite: true }) });
+  });
+  // pastilles barrées : le trait se dessine à l'entrée
+  $$('[data-benefit]').forEach((sec, i) => {
+    const pill = $('.pill__t', sec);
+    gsap.set(pill, { '--strike': 0 });
+    ScrollTrigger.create({ trigger: sec, start: 'top 55%', end: 'bottom 55%',
+      onEnter: () => { gsap.to(pill, { '--strike': 1, duration: 0.6, delay: 0.4, ease: 'power3.out' }); railActive(i); },
+      onEnterBack: () => railActive(i),
+      onLeaveBack: () => { gsap.to(pill, { '--strike': 0, duration: 0.2 }); if (i === 0) railActive(-1); },
+      onLeave: () => { if (i === C.benefits.length - 1) railActive(-1); } });
+  });
+  // son de transition à l'entrée des bénéfices
+  ScrollTrigger.create({ trigger: '[data-benefit="0"]', start: 'top 70%', onEnter: () => sound.play('whoosh') });
+  // le texte de la gamme disparaît quand on quitte la section
+  gsap.to('#gamme > *', { autoAlpha: 0, y: -30, ease: 'none', scrollTrigger: { trigger: '#gamme', start: 'top top', end: '45% top', scrub: true } });
+}
+const railItems = () => $$('[data-rail] span');
+let railShown = false;
+function railActive(i) {
+  railItems().forEach((s, k) => s.classList.toggle('is-active', k === i));
+  const show = i >= 0;
+  if (show !== railShown) { railShown = show; gsap.to('[data-rail]', { autoAlpha: show ? 1 : 0, x: show ? 0 : 20, duration: 0.5, ease: 'power3.out' }); }
+}
+
+/* ── 9. Boucle de rendu ───────────────────────────────────────────────── */
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  syncTimeline();
+  if (!renderer) return;
+
+  // carrousel lissé + variante active
+  carousel.pos = lerp(carousel.pos, carousel.target, 1 - Math.pow(0.0015, dt));
+  const activeSlot = Math.round(carousel.pos / carousel.spacing);
+  const idx = wrap(activeSlot, 0, N);
+  if (idx !== carousel.index) setVariant(idx);
+
+  // couleurs qui glissent vers la variante active
+  const kc = 1 - Math.pow(0.02, dt);
+  colors.c1.lerp(colors.t1, kc); colors.c2.lerp(colors.t2, kc);
+  backdrop.material.uniforms.uTime.value = t;
+
+  // pointeur lissé : légère parallaxe caméra
+  pointer.sx = lerp(pointer.sx, (pointer.x / innerWidth - 0.5), 0.05);
+  pointer.sy = lerp(pointer.sy, (pointer.y / innerHeight - 0.5), 0.05);
+
+  const mobileScale = innerWidth < 760 ? 0.78 : 1;
+  camera.position.set(pointer.sx * 0.6, state.camY - pointer.sy * 0.4, state.camZ / mobileScale);
+  camera.lookAt(0, state.camY * 0.6, 0);
+
+  const half = carousel.span / 2;
+  products.forEach((p, i) => {
+    const offset = wrap(i * carousel.spacing - carousel.pos, -half, half);
+    p.userData.offset = offset;
+    const isActive = Math.abs(offset) < carousel.spacing / 2;
+    const vis = isActive ? 1 : state.others;
+    const idle = reduceMotion ? 0 : Math.sin(t * 0.8 + i) * 0.06;
+    p.position.set(
+      (isActive ? state.x * Math.min(1, camera.aspect / 1.5) : 0) + offset * state.spread,
+      state.y + idle + intro.y * (1 + Math.abs(offset) * 0.08),
+      -Math.abs(offset) * 0.35,
+    );
+    const s = state.scale * intro.s * (isActive ? 1 : 0.92) * (0.001 + vis);
+    p.scale.setScalar(s);
+    p.rotation.set(isActive ? state.rotX : 0.02, (isActive ? state.rotY : 0) + offset * -0.12 + (reduceMotion ? 0 : Math.sin(t * 0.4 + i) * 0.22), state.rotZ - offset * 0.025);
+    p.visible = s > 0.01 && Math.abs(p.position.x) < 30;
+    const bub = p.userData.bubbles;
+    if (bub && p.visible && !reduceMotion) {
+      const m = new THREE.Matrix4();
+      bub.userData.seeds.forEach((b, k) => {
+        b.y += dt * b.k * 0.5; if (b.y > 0.9) b.y = -2;
+        const wob = Math.sin(t * 3 + k) * 0.03;
+        m.makeScale(b.s, b.s, b.s).setPosition(Math.cos(b.a) * b.r + wob, b.y, Math.sin(b.a) * b.r);
+        bub.setMatrixAt(k, m);
+      });
+      bub.instanceMatrix.needsUpdate = true;
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  if (renderer) {
+    renderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    backdrop.material.uniforms.uAspect.value = innerWidth / innerHeight;
+  }
+  clearTimeout(window.__rz); window.__rz = setTimeout(() => { ScrollTrigger.refresh(); buildTimeline(); }, 200);
+});
+
+/* ── 10. Menu, FAQ, newsletter ───────────────────────────────────────── */
+const menuBtn = $('.nav__menu');
+function toggleMenu(open = !document.body.classList.contains('menu-open')) {
+  document.body.classList.toggle('menu-open', open);
+  menuBtn.setAttribute('aria-expanded', String(open));
+  sound.play('click');
+  if (open) { lenis?.stop(); gsap.to('.menu', { autoAlpha: 1, duration: 0.4 }); gsap.fromTo('.menu li', { yPercent: 60, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, stagger: 0.05, duration: 0.6, ease: 'power3.out' }); $('.menu a')?.focus({ preventScroll: true }); }
+  else { lenis?.start(); gsap.to('.menu', { autoAlpha: 0, duration: 0.3 }); }
+}
+menuBtn.addEventListener('click', () => toggleMenu());
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('menu-open')) { toggleMenu(false); menuBtn.focus(); } });
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="#"]'); if (!a) return;
+  const id = a.getAttribute('href'); if (id.length < 2) return;
+  e.preventDefault();
+  if (document.body.classList.contains('menu-open')) toggleMenu(false);
+  scrollTo(id, { duration: 1.8 });
+});
+
+$$('.faq details').forEach((d) => {
+  const sum = $('summary', d), body = $('.faq__a', d);
+  sum.addEventListener('click', (e) => {
+    e.preventDefault(); sound.play('click');
+    if (d.open) gsap.to(body, { height: 0, duration: 0.4, ease: 'power2.inOut', onComplete: () => { d.open = false; gsap.set(body, { clearProps: 'height' }); ScrollTrigger.refresh(); } });
+    else { d.open = true; gsap.from(body, { height: 0, duration: 0.5, ease: 'power3.out', onComplete: () => ScrollTrigger.refresh() }); }
+  });
+});
+
+$('.newsletter form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#nl-email'), msg = $('.newsletter__msg');
+  if (!input.checkValidity()) { msg.textContent = 'Adresse mail invalide.'; input.focus(); return; }
+  msg.textContent = C.newsletter.success; input.value = ''; sound.play('drop');
+});
+
+/* ── 11. Démarrage : loader → intro ──────────────────────────────────── */
+(async () => {
+  const minDelay = new Promise((r) => setTimeout(r, reduceMotion ? 200 : 1400));
+  try { await buildProducts(); } catch (err) { console.error('[scroll-3d] produits', err); }
+  pct.target = 100;
+  await minDelay;
+  applyColors(0);
+  colors.c1.copy(colors.t1); colors.c2.copy(colors.t2);
+  buildTimeline();
+  buildReveals();
+  if (renderer) renderer.compile(scene, camera);
+  gsap.ticker.add(frame);
+
+  const introTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+  introTl.to('.loader__pct', { autoAlpha: 0, duration: 0.3 }, 0.2)
+       .to('.loader', { clipPath: 'inset(0 0 100% 0)', duration: reduceMotion ? 0.01 : 1.0, ease: 'power4.inOut' }, 0.35)
+       .to(intro, { y: 0, s: 1, duration: reduceMotion ? 0.01 : 1.8, ease: 'expo.out' }, 0.45)
+       .from('.nav > *, .frame i, .progress', { autoAlpha: 0, y: -10, stagger: 0.05, duration: 0.6 }, 1.0)
+       .from('#gamme .split-inner', { yPercent: 110, stagger: 0.08, duration: 0.9, ease: 'power4.out' }, 1.0)
+       .from('#gamme .eyebrow, #gamme .gamme__controls, #gamme .hint', { autoAlpha: 0, y: 14, stagger: 0.08, duration: 0.7 }, 1.2)
+       .add(() => { document.body.classList.remove('is-loading'); $('.loader').remove(); lenis?.start(); ScrollTrigger.refresh(); }, 1.3);
+})();
+
+window.__scroll3d = { state, carousel, scrollTo, setVariant, get lenis() { return lenis; } }; // debug / tests
+</script>
+</body>
+</html>
