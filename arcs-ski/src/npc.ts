@@ -130,7 +130,8 @@ export class Crowd {
   }
 
   private respawn(e: { sk: Skier; pilot: Pilot; stuck: number }, frac = 0) {
-    const r = this.routes[Math.floor(this.rnd() * this.routes.length)];
+    const mbR = this.routes.filter(r => r.name === 'Mont-Blanc');
+    const r = mbR.length && this.rnd() < 0.45 ? mbR[Math.floor(this.rnd() * mbR.length)] : this.routes[Math.floor(this.rnd() * this.routes.length)];
     e.pilot = new Pilot(r, this.rnd, frac);
     const p = r.pts[e.pilot.idx], q = r.pts[e.pilot.idx + 1];
     e.sk.place(p[0], p[1], Math.atan2(q[0] - p[0], q[1] - p[1]));
@@ -155,15 +156,18 @@ export class Crowd {
       if (e.sk.speed < 0.5 && e.sk.crashT <= 0) e.stuck += dt; else e.stuck = 0;
       if (e.stuck > 6) this.respawn(e);
       const model = e.sk.model;
-      model.root.visible = !far;
-      if (!far) {
+      const dc = Math.hypot(e.sk.pos.x - cam.x, e.sk.pos.z - cam.z);
+      model.root.visible = dc < 450;
+      const shadow = dc < 70;
+      if (shadow !== (e as any).shadow) { (e as any).shadow = shadow; model.root.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = shadow; }); }
+      if (dc < 450) {
         e.sk.updateModel(dt);
         if (e.sk.grounded && e.sk.crashT <= 0 && e.sk.speed > 1) {
           const root = model.root; root.updateMatrixWorld();
           this._l.set(-0.13, 0, -0.3).applyMatrix4(root.matrixWorld); this._l.y = this.hf.height(this._l.x, this._l.z);
           this._r.set(0.13, 0, -0.3).applyMatrix4(root.matrixWorld); this._r.y = this.hf.height(this._r.x, this._r.z);
           this._s.set(1, 0, 0).applyQuaternion(root.quaternion).setY(0).normalize();
-          this.tracks.add([this._l, this._r], this._s, 0.12 + e.sk.skid * 0.2, 0.55 * (1 - this.mask.sample(e.sk.pos.x, e.sk.pos.z, 0) * 0.3), e.key, false);
+          { const onp = this.mask.sample(e.sk.pos.x, e.sk.pos.z, 0); this.tracks.add([this._l, this._r], this._s, (0.24 + e.sk.skid * 0.3) * (1.5 - onp * 0.5), 0.75 - onp * 0.15, e.key, false); }
         }
       }
     }
@@ -197,8 +201,8 @@ export class Crowd {
           side.set(c0, 0, -s0);
           l.set(sk.pos.x - side.x * 0.13 - s0 * 0.3, 0, sk.pos.z - side.z * 0.13 - c0 * 0.3); l.y = hf.height(l.x, l.z);
           r.set(sk.pos.x + side.x * 0.13 - s0 * 0.3, 0, sk.pos.z + side.z * 0.13 - c0 * 0.3); r.y = hf.height(r.x, r.z);
-          const fade = 0.25 + rnd() * 0.3;
-          tracks.add([l, r], side, 0.11 + sk.skid * 0.2, fade, 0, false);
+          const fade = 0.4 + rnd() * 0.35;
+          tracks.add([l, r], side, (0.24 + sk.skid * 0.3) * (1.5 - sk.onPiste * 0.5), fade, 0, false);
         }
       }
     }

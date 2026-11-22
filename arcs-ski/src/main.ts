@@ -7,7 +7,7 @@ import { Skier } from './skier';
 import { Tracks, Spray, makeSky } from './effects';
 import { Input } from './input';
 import { Crowd, buildRoutes } from './npc';
-import { makeSnowGuns, makeRocks, makeFunicular } from './props';
+import { makeSnowGuns, makeRocks, makeFunicular, makeVillageLife } from './props';
 import { PisteMap } from './map';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -118,9 +118,9 @@ function build(data: GameData) {
   const midTex = new THREE.Texture(data.midForest);
   midTex.flipY = false; midTex.colorSpace = THREE.NoColorSpace; midTex.needsUpdate = true;
   const midMat = makeSnowMaterial('mid', midTex, meta.midHalf);
-  scene.add(makeBackdrop(midHF, 512, meta.coreHalf - 40, 30, midMat));
+  scene.add(makeBackdrop(midHF, 320, meta.coreHalf - 40, 30, midMat));
   const farMat = makeSnowMaterial('far', null, meta.farHalf);
-  scene.add(makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat));
+  scene.add(makeBackdrop(farHF, 256, meta.midHalf - 300, 80, farMat));
 
   // ------------------------------------------------------- monde
   const forest = new Forest(data.trees, hf, mask);
@@ -130,7 +130,8 @@ function build(data: GameData) {
   scene.add(makePistePoles(data.features.pistes, hf, mask));
   scene.add(makeSigns(data.features.pistes, hf));
   scene.add(makeSnowGuns(data.features.pistes, hf, mask, forest));
-  scene.add(makeRocks(hf, mask, forest));
+  const rocks = makeRocks(hf, mask, forest);
+  scene.add(rocks);
   const funi = makeFunicular(data.features.funiculars ?? [], hf);
   if (funi) scene.add(funi.group);
   const pisteIdx = new PisteIndex(data.features.pistes);
@@ -144,10 +145,19 @@ function build(data: GameData) {
   const routes = buildRoutes(data.features.pistes, lifts, hf);
   const oldTracks = new Tracks(40000, 0.9); scene.add(oldTracks.mesh);
   Crowd.pretrace(routes, hf, mask, forest, oldTracks, Math.min(60, routes.length * 3));
-  const crowd = new Crowd(routes, hf, mask, forest, scene, 22, oldTracks);
+  const crowd = new Crowd(routes, hf, mask, forest, scene, 34, oldTracks);
 
   // points de téléportation : sommets des remontées
   const mb = lifts.find(l => l.lift.name === 'Mont-Blanc');
+  {
+    // skieurs à l'arrêt au pied des pistes et aux sommets
+    const spots: THREE.Vector3[] = [];
+    if (mb) spots.push(mb.bottom.clone().add(new THREE.Vector3(30, 0, -25)));
+    for (const l of lifts) if (l !== mb && hf.inside(l.top.x, l.top.z, 60) && l.lift.type === 'chair_lift') spots.push(l.top.clone().addScaledVector(l.topDir, 20));
+    if (mb) spots.push(mb.top.clone().addScaledVector(mb.topDir, 25));
+    const gAt = mb ? mb.top.clone().add(new THREE.Vector3(-mb.topDir.z * 22, 0, mb.topDir.x * 22)) : null;
+    scene.add(makeVillageLife(hf, mask, spots, gAt, mb ? mb.topDir : new THREE.Vector3(0, 0, 1)));
+  }
   const mbPistes = data.features.pistes.filter(p => p.name === 'Mont-Blanc' && !p.area);
   function spawnAtLift(l: LiftRuntime) {
     // départ à 10 m en aval de la gare, orienté vers la pente
@@ -221,6 +231,16 @@ function build(data: GameData) {
           if (rel < 1 && nb.d < crown) { dist = Math.max(2.5, t - 1); height = height * (dist / full) + 0.6; break; }
         }
       }
+      // le relief ne doit pas masquer le skieur : on remonte la caméra si une bosse coupe la vue
+      let lift = 0;
+      for (let t = 1.5; t < dist; t += 1.5) {
+        const f = t / dist;
+        const gx = p.x - camDir.x * t, gz = p.z - camDir.z * t;
+        const lineY = p.y + 1.2 + (height - 1.2) * f;
+        const need = hf.height(gx, gz) + 0.7 - lineY;
+        if (need > 0) lift = Math.max(lift, need / f);
+      }
+      height += Math.min(lift, 12);
       target = p.clone().addScaledVector(camDir, -dist); target.y = p.y + height;
       look = p.clone().addScaledVector(camDir, 6); look.y += camMode === 0 ? 0.9 : 0.5;
     }
@@ -233,14 +253,16 @@ function build(data: GameData) {
     const fov = 62 + Math.min(16, sp * 0.45);
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 2);
     // léger tremblement à grande vitesse
-    if (sp > 18 && skier.grounded) {
-      const a = (sp - 18) * 0.0009;
-      camera.rotation.z += (Math.random() - 0.5) * a;
-      camera.rotation.x += (Math.random() - 0.5) * a;
+    if (sp > 16 && skier.grounded && camMode !== 2) {
+      const a = (sp - 16) * 0.0007;
+      const t = performance.now() / 1000;
+      camera.rotation.z += (Math.sin(t * 13.1) * 0.6 + Math.sin(t * 23.7) * 0.4) * a;
+      camera.rotation.x += (Math.sin(t * 17.3 + 1.3) * 0.6 + Math.sin(t * 29.1) * 0.4) * a;
     }
     camera.updateProjectionMatrix();
     camSnap = false;
-    skier.model.root.visible = camMode !== 2 || skier.crashT > 0;
+    skier.model.root.visible = true;
+    skier.model.hips.visible = camMode !== 2 || skier.crashT > 0;
   }
 
   // ------------------------------------------------------- interface
@@ -327,8 +349,20 @@ function build(data: GameData) {
   // chrono Mont-Blanc
   let best = NaN;
   try { best = Number(localStorage.getItem('arcs-mb-best') ?? 'NaN'); } catch { /* stockage indisponible */ }
-  let chronoRun = false, chronoT = 0, armed = true;
-  function chronoReset() { chronoRun = false; chronoT = 0; armed = true; }
+  let chronoRun = false, chronoT = 0, armed = true, gate = 0, vmaxRun = 0;
+  function chronoReset() { chronoRun = false; chronoT = 0; armed = true; gate = 0; vmaxRun = 0; }
+  const mbRoute = routes.filter(r => r.name === 'Mont-Blanc').sort((a, b) => b.len - a.len)[0];
+  const gates = mbRoute ? [0.2, 0.4, 0.6, 0.8].map(f => mbRoute.pts[Math.floor(f * (mbRoute.pts.length - 1))]) : [];
+  const finishEl = $('finish');
+  function showFinish(t: number, isBest: boolean, prev: number) {
+    $('fin-time').textContent = fmt(t);
+    $('fin-best').textContent = isBest ? (isFinite(prev) ? `Nouveau record ! (ancien : ${fmt(prev)})` : 'Premier temps enregistré') : `Record : ${fmt(best)} (+${(t - best).toFixed(2)} s)`;
+    $('fin-vmax').textContent = `${Math.round(vmaxRun * 3.6)} km/h`;
+    $('fin-avg').textContent = mbRoute ? `${Math.round(mbRoute.len / t * 3.6)} km/h` : '–';
+    finishEl.classList.add('show');
+  }
+  $('fin-again').onclick = () => { finishEl.classList.remove('show'); restart(); };
+  $('fin-close').onclick = () => finishEl.classList.remove('show');
   const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
   function updateChrono(dt: number) {
     if (!mb) return;
@@ -338,24 +372,33 @@ function build(data: GameData) {
     else if (armed && dTop < 80 && skier.speed > 1) { chronoRun = true; armed = false; message('Chrono lancé — piste Mont-Blanc', 1.6); }
     if (chronoRun) {
       chronoT += dt;
+      vmaxRun = Math.max(vmaxRun, skier.speed);
+      if (gate < gates.length && Math.hypot(skier.pos.x - gates[gate][0], skier.pos.z - gates[gate][1]) < 45) {
+        gate++;
+        message(`Point de contrôle ${gate}/${gates.length} · ${fmt(chronoT)}`, 1.4);
+      }
       if (dBot < 110 && skier.pos.y < mb.bottom.y + 20) {
         chronoRun = false;
-        const isBest = !(best <= chronoT);
-        if (isBest) { best = chronoT; try { localStorage.setItem('arcs-mb-best', String(best)); } catch { /* ignore */ } }
-        message(`Arrivée Arc 1600 : ${fmt(chronoT)}${isBest ? ' — record !' : ''}`, 4);
+        if (gate < gates.length) message('Chrono annulé : tu as quitté la piste Mont-Blanc', 3);
+        else {
+          const prev = best;
+          const isBest = !(best <= chronoT);
+          if (isBest) { best = chronoT; try { localStorage.setItem('arcs-mb-best', String(best)); } catch { /* ignore */ } }
+          showFinish(chronoT, isBest, prev);
+        }
       }
       if (chronoT > 900) chronoRun = false;
     }
-    hudChrono.innerHTML = chronoRun ? `⏱ ${fmt(chronoT)}` : (isFinite(best) ? `Record Mont-Blanc ${fmt(best)}` : '');
+    hudChrono.innerHTML = chronoRun ? `⏱ ${fmt(chronoT)} <small>${gate}/${gates.length}</small>` : (isFinite(best) ? `Record Mont-Blanc ${fmt(best)}` : '');
   }
 
   // ------------------------------------------------------- qualité graphique
   const QUALITY = [
-    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 4096, hi: 330, lo: 2000 },
-    { name: 'Moyenne', ratio: 1, shadow: 2048, hi: 220, lo: 1400 },
-    { name: 'Basse', ratio: 0.75, shadow: 1024, hi: 140, lo: 900 },
+    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 4096, hi: 330, lo: 1000 },
+    { name: 'Moyenne', ratio: 1, shadow: 2048, hi: 240, lo: 750 },
+    { name: 'Basse', ratio: 0.8, shadow: 1024, hi: 150, lo: 500 },
   ];
-  let quality = 0;
+  let quality = 1;
   try { const q = Number(localStorage.getItem('arcs-quality')); if (q >= 0 && q < 3) quality = q; } catch { /* ignore */ }
   let autoQ = true;
   function applyQuality(q: number, announce = true) {
@@ -402,7 +445,7 @@ function build(data: GameData) {
   const input = new Input();
   const audio = new SkiAudio();
   const clock = new THREE.Clock();
-  let acc = 0, elapsed = 0;
+  let acc = 0, elapsed = 0, elapsedTitle = 0.6;
   const STEP = 1 / 120;
   const skiL = new THREE.Vector3(), skiR = new THREE.Vector3(), side = new THREE.Vector3();
   let lastPiste = '';
@@ -423,8 +466,8 @@ function build(data: GameData) {
     }
     if (input.was('KeyT', 3)) toggleTp();
     if (input.was('KeyM', 2)) toggleMap();
-    if (paused && input.was('Enter')) restart();
-    if (input.was('KeyR', 8)) { if (mb) spawnAtLift(mb); message('Retour au sommet du télésiège Mont-Blanc'); }
+    if ((paused || finishEl.classList.contains('show')) && input.was('Enter')) { finishEl.classList.remove('show'); restart(); }
+    if (input.was('KeyR', 8) && !paused && !map.open && !tpOpen) { finishEl.classList.remove('show'); if (mb) spawnAtLift(mb); message('Retour au sommet du télésiège Mont-Blanc'); }
     if (input.was('KeyC', 1)) { camMode = (camMode + 1) % 3; camSnap = true; }
     if (input.was('KeyH')) help.classList.toggle('show');
     if (input.was('KeyN')) { audio.setMuted(!audio.muted); message(audio.muted ? 'Son coupé' : 'Son activé', 1.2); }
@@ -444,7 +487,7 @@ function build(data: GameData) {
     }
     if (tpOpen) for (let i = 0; i < Math.min(9, tpLifts.length); i++) if (input.was('Digit' + (i + 1)) || input.was('Numpad' + (i + 1))) { spawnAtLift(tpLifts[i]); toggleTp(false); }
 
-    const frozen = paused || tpOpen || map.open;
+    const frozen = paused || tpOpen || map.open || !started;
     if (!frozen) {
       elapsed += dt;
       acc += dt;
@@ -467,7 +510,7 @@ function build(data: GameData) {
       skiR.set(0.13, 0, -0.3).applyMatrix4(root.matrixWorld);
       skiL.y = hf.height(skiL.x, skiL.z); skiR.y = hf.height(skiR.x, skiR.z);
       side.set(1, 0, 0).applyQuaternion(root.quaternion).setY(0).normalize();
-      tracks.add([skiL, skiR], side, 0.13 + skier.skid * 0.3, (1 - skier.onPiste * 0.25) * (0.8 + skier.skid * 0.2));
+      tracks.add([skiL, skiR], side, (0.26 + skier.skid * 0.35) * (1.5 - skier.onPiste * 0.5), 1.0 - skier.onPiste * 0.15);
       const sp = skier.speed;
       const intensity = skier.skid * Math.min(1, sp / 5) + skier.carve * 0.35 + (1 - skier.onPiste) * Math.min(1, sp / 12) * 0.5;
       const n = Math.floor(intensity * 7 * (dt * 60) + Math.random());
@@ -482,17 +525,25 @@ function build(data: GameData) {
 
     for (const l of lifts) l.update(elapsed, camera.position);
     if (funi) funi.update(elapsed);
-    if (!frozen) crowd.update(dt, camera.position, Math.max(1, Math.round(dt / (1 / 60))), Math.min(dt, 0.05) / Math.max(1, Math.round(dt / (1 / 60))));
+    if (!(paused || tpOpen || map.open)) crowd.update(dt, camera.position, Math.max(1, Math.round(dt / (1 / 60))), Math.min(dt, 0.05) / Math.max(1, Math.round(dt / (1 / 60))));
     (sky.material as THREE.ShaderMaterial).uniforms.uTime.value = elapsed;
-    updateCamera(dt);
+    if (!started && mb) {
+      // écran titre : vol lent autour d'Arc 1600 et de la piste Mont-Blanc
+      const c = mb.bottom.clone().lerp(mb.top, 0.45);
+      const a = elapsedTitle += dt * 0.035;
+      camera.position.set(c.x + Math.cos(a) * 900, c.y + 380, c.z + Math.sin(a) * 900);
+      camera.lookAt(c.x, c.y - 60, c.z);
+      camera.fov = 55; camera.updateProjectionMatrix();
+    } else updateCamera(dt);
     core.update(camera.position);
     forest.update(camera.position, QUALITY[quality].lo, QUALITY[quality].hi);
+    (rocks as any).updateRocks(camera.position, QUALITY[quality].lo);
     (coreMat as any).snowUniforms.uTime.value = elapsed;
     (coreMat as any).snowUniforms.uSunDir.value.copy(sunDir);
 
     // ombres centrées sur le joueur (alignées sur les texels pour éviter le scintillement)
     const tgt = skier.pos;
-    const texel = (2 * S) / 4096;
+    const texel = (2 * S) / QUALITY[quality].shadow;
     const sx = Math.round(tgt.x / texel) * texel, sz = Math.round(tgt.z / texel) * texel;
     sun.target.position.set(sx, tgt.y, sz);
     sun.position.set(sx, tgt.y, sz).addScaledVector(sunDir, 600);
@@ -516,7 +567,9 @@ function build(data: GameData) {
       map.others = crowd.skiers.map(e => ({ x: e.sk.pos.x, z: e.sk.pos.z }));
       if ((fpsN & 7) === 0) map.draw();
     }
-    audio.update(skier.speed, skier.carve, skier.skid, skier.grounded, skier.crashT > 0);
+    if (frozen) audio.update(0, 0, 0, false, false);
+    else audio.update(skier.speed, skier.carve, skier.skid, skier.grounded, skier.crashT > 0);
+    audio.ambience(mb ? Math.hypot(camera.position.x - mb.bottom.x, camera.position.z - mb.bottom.z) : 9999, frozen);
 
     if (composer && quality < 2) composer.render(); else renderer.render(scene, camera);
     input.endFrame();
@@ -539,9 +592,12 @@ function build(data: GameData) {
   go.style.display = 'inline-flex';
   go.onclick = () => {
     started = true;
+    camSnap = true;
+    core.warm(skier.pos);
     loading.classList.add('hide');
     audio.start();
     message('Piste Mont-Blanc · Arc 1600 — bonne descente !', 3);
+    setTimeout(() => $('keys').classList.add('fade'), 20000);
     renderer.domElement.focus();
   };
   // test automatique : ?auto=1 lance directement

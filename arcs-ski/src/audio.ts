@@ -5,7 +5,9 @@ export class SkiAudio {
   private carve!: GainNode; private carveF!: BiquadFilterNode;
   private scrape!: GainNode; private scrapeF!: BiquadFilterNode;
   private master!: GainNode;
+  private amb!: GainNode; private ambF!: BiquadFilterNode;
   muted = false;
+  constructor() { try { this.muted = localStorage.getItem('arcs-muted') === '1'; } catch { /* ignore */ } }
 
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
@@ -17,7 +19,7 @@ export class SkiAudio {
     const d = buf.getChannelData(0);
     let b = 0;
     for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b = 0.98 * b + 0.02 * w; d[i] = w * 0.5 + b * 4; }
-    this.master = ctx.createGain(); this.master.gain.value = 0.6; this.master.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.6; this.master.connect(ctx.destination);
     const chain = (type: BiquadFilterType, freq: number, q: number) => {
       const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
       src.playbackRate.value = 0.7 + Math.random() * 0.6;
@@ -29,9 +31,22 @@ export class SkiAudio {
     [this.wind, this.windF] = chain('lowpass', 400, 0.7);
     [this.carve, this.carveF] = chain('bandpass', 900, 1.2);
     [this.scrape, this.scrapeF] = chain('bandpass', 2400, 0.8);
+    [this.amb, this.ambF] = chain('bandpass', 520, 0.6);   // rumeur de la station
   }
 
-  setMuted(m: boolean) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.6; }
+  setMuted(m: boolean) {
+    this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.6;
+    try { localStorage.setItem('arcs-muted', m ? '1' : '0'); } catch { /* ignore */ }
+  }
+
+  /** rumeur de la station (foule, remontées) selon la distance au front de neige */
+  ambience(dist: number, frozen: boolean) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const k = frozen ? 0 : Math.max(0, 1 - dist / 450);
+    this.amb.gain.setTargetAtTime(k * (0.1 + 0.04 * Math.sin(t * 0.7)), t, 0.4);
+    this.ambF.frequency.setTargetAtTime(480 + 80 * Math.sin(t * 0.33), t, 0.5);
+  }
 
   update(speed: number, carve: number, skid: number, grounded: boolean, crashed: boolean) {
     if (!this.ctx) return;

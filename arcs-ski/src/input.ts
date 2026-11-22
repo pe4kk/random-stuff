@@ -43,11 +43,22 @@ export class Input {
     return this.pressed.has(code) || (padButton !== undefined && this.padPressed.has(padButton));
   }
 
+  private steerS = 0;
+  private lastT = performance.now();
+
   ski(): SkiInput {
     const k = this.keys;
     let steer = 0, tuck = 0, brake = 0, push = 0, jump = false;
-    if (k.has('ArrowLeft') || k.has('KeyA')) steer -= 1;
-    if (k.has('ArrowRight') || k.has('KeyD')) steer += 1;
+    let target = 0;
+    if (k.has('ArrowLeft') || k.has('KeyA')) target -= 1;
+    if (k.has('ArrowRight') || k.has('KeyD')) target += 1;
+    // clavier : prise de carre progressive (~0,25 s), relâchement plus rapide
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
+    const rate = target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steerS) ? 9 : 4;
+    const d = target - this.steerS;
+    this.steerS += Math.sign(d) * Math.min(Math.abs(d), rate * dt);
+    steer = this.steerS;
     if (k.has('ArrowUp') || k.has('KeyW')) { tuck = 1; push = 1; }
     if (k.has('ArrowDown') || k.has('KeyS')) brake = 1;
     if (k.has('Space')) jump = true;

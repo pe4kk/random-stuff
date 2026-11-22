@@ -73,7 +73,7 @@ export function makeSnowGuns(pistes: Piste[], hf: HeightField, mask: MaskField, 
 
 // ----------------------------------------------------------- rochers
 function rockGeometry(seed: number): THREE.BufferGeometry {
-  const g = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
+  const g = new THREE.IcosahedronGeometry(1, 2).toNonIndexed();
   const pos = g.attributes.position as THREE.BufferAttribute;
   const key = (x: number, y: number, z: number) => `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`;
   const disp = new Map<string, number>();
@@ -116,27 +116,48 @@ export function makeRocks(hf: HeightField, mask: MaskField, forest: Forest): THR
       const px = x + (rnd() - 0.5) * step, pz = z + (rnd() - 0.5) * step;
       hf.normal(px, pz, n, 3);
       const slope = 1 - n.y;
-      if (slope < 0.16) continue;
-      const pr = Math.min(1, (slope - 0.16) * 2.2) * 0.35;
+      if (slope < 0.22) continue;
+      const pr = Math.min(1, (slope - 0.22) * 2.5) * 0.4;
       if (rnd() > pr) continue;
       if (mask.sample(px, pz, 0) > 0.15 || mask.sample(px, pz, 3) > 0.05 || mask.sample(px, pz, 1) > 0.6) continue;
       const size = 0.5 + Math.pow(rnd(), 2.2) * 3.2 * (0.6 + slope);
       const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.4, rnd() * 6.28, (rnd() - 0.5) * 0.4));
-      m.compose(new THREE.Vector3(px, hf.height(px, pz) - size * 0.35, pz), q, new THREE.Vector3(size, size, size));
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(n.x, n.y, n.z))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28));
+      m.compose(new THREE.Vector3(px, hf.height(px, pz) - size * 0.5, pz), q, new THREE.Vector3(size, size * (0.6 + rnd() * 0.5), size));
       lists[Math.floor(rnd() * 3)].push(m);
       if (size > 1.0) forest.addObstacle(px, pz, size * 0.9, size * 0.8);
     }
   }
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true });
-  lists.forEach((list, i) => {
-    if (!list.length) return;
-    const im = new THREE.InstancedMesh(geos[i], mat, list.length);
-    list.forEach((m, k) => im.setMatrixAt(k, m));
-    im.castShadow = true; im.receiveShadow = true;
-    im.computeBoundingSphere();
-    g.add(im);
+  // découpage en tronçons de 256 m pour l'élimination hors champ et la distance d'affichage
+  const CH = 256, nc = Math.ceil(2 * hf.half / CH);
+  const chunks: { mesh: THREE.InstancedMesh; x: number; z: number }[] = [];
+  const pos = new THREE.Vector3();
+  lists.forEach((list, gi) => {
+    const buckets = new Map<number, THREE.Matrix4[]>();
+    for (const m of list) {
+      pos.setFromMatrixPosition(m);
+      const k = Math.floor((pos.z + hf.half) / CH) * nc + Math.floor((pos.x + hf.half) / CH);
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k)!.push(m);
+    }
+    for (const [k, ms] of buckets) {
+      const im = new THREE.InstancedMesh(geos[gi], mat, ms.length);
+      ms.forEach((m, i) => im.setMatrixAt(i, m));
+      im.castShadow = true; im.receiveShadow = true;
+      im.computeBoundingSphere();
+      g.add(im);
+      chunks.push({ mesh: im, x: -hf.half + ((k % nc) + 0.5) * CH, z: -hf.half + (Math.floor(k / nc) + 0.5) * CH });
+    }
   });
+  (g as any).updateRocks = (cam: THREE.Vector3, far: number) => {
+    for (const c of chunks) {
+      const d = Math.hypot(c.x - cam.x, c.z - cam.z) - CH * 0.7;
+      c.mesh.visible = d < far;
+      c.mesh.castShadow = d < 200;
+    }
+  };
   return g;
 }
 
@@ -187,6 +208,28 @@ export function makeFunicular(lines: { name: string; pts: [number, number][] }[]
   roof.position.y = 3.8; car.add(roof);
   const cars = [car, car.clone()];
   cars.forEach(c => g.add(c));
+  // gare d'arrivée (extrémité haute dans la zone détaillée)
+  {
+    const ins = P.map((q, i) => ({ q, i })).filter(o => !isNaN(o.q.y));
+    const hiEnd = ins.reduce((a, b) => (b.q.y > a.q.y ? b : a));
+    const nb = P[Math.max(0, Math.min(P.length - 1, hiEnd.i + (hiEnd.i > 0 && !isNaN(P[hiEnd.i - 1].y) ? -6 : 6)))];
+    const st = new THREE.Group();
+    const wallM = new THREE.MeshStandardMaterial({ color: 0x8d6a4f, roughness: 0.8 });
+    const body2 = new THREE.Mesh(new THREE.BoxGeometry(14, 9, 34), wallM); body2.position.y = 2.5; body2.castShadow = true; body2.receiveShadow = true; st.add(body2);
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x1d2a38, roughness: 0.15, metalness: 0.6 });
+    const band2 = new THREE.Mesh(new THREE.BoxGeometry(14.1, 2.2, 30), glassM); band2.position.y = 4.5; st.add(band2);
+    const roof2 = new THREE.Mesh(new THREE.BoxGeometry(16, 0.8, 36), new THREE.MeshStandardMaterial({ color: 0xf2f5fa, roughness: 0.8 })); roof2.position.y = 7.4; roof2.castShadow = true; st.add(roof2);
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 160;
+    const x = c.getContext('2d')!; x.fillStyle = '#7a1f2b'; x.fillRect(0, 0, 1024, 160); x.fillStyle = '#fff'; x.font = '800 84px system-ui, sans-serif'; x.textAlign = 'center'; x.fillText("FUNICULAIRE · ARC 1600", 512, 112);
+    const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+    for (const side of [-1, 1]) {
+      const sg = new THREE.Mesh(new THREE.PlaneGeometry(12, 1.9), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.6 }));
+      sg.position.set(side * 7.06, 8.6, 0); sg.rotation.y = side * Math.PI / 2; st.add(sg);
+    }
+    st.position.copy(hiEnd.q); st.position.y -= 1.5;
+    st.lookAt(nb.x, st.position.y, nb.z);
+    g.add(st);
+  }
   const cum: number[] = [0];
   for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z));
   const total = cum[cum.length - 1];
@@ -215,9 +258,103 @@ export function makeFunicular(lines: { name: string; pts: [number, number][] }[]
         c.visible = true;
         c.position.copy(p);
         c.lookAt(p2.x, p2.y, p2.z);
-        // décalage latéral au croisement
-        c.translateX(i === 0 ? 0 : 0);
+        // évitement à mi-parcours : les rames se croisent sur deux voies
+        const mid = Math.max(0, 1 - Math.abs(f - 0.5) / 0.12);
+        c.translateX((i === 0 ? -1 : 1) * 2.0 * mid * mid * (3 - 2 * mid));
       });
     },
   };
+}
+
+// ----------------------------------------------------------- vie au pied des pistes
+function standingGeometry(): THREE.BufferGeometry {
+  const P: THREE.BufferGeometry[] = [];
+  const add = (g: THREE.BufferGeometry, x: number, y: number, z: number, c: number) => { g.translate(x, y, z); P.push(colored(g, c)); };
+  add(new THREE.CylinderGeometry(0.19, 0.16, 0.55, 8), 0, 1.25, 0, 0xffffff);          // veste (teintée)
+  add(new THREE.SphereGeometry(0.19, 8, 6).scale(1.1, 0.45, 0.8), 0, 1.52, 0, 0xffffff);
+  add(new THREE.SphereGeometry(0.11, 8, 6), 0, 1.72, 0, 0xd9a383);                       // visage
+  add(new THREE.SphereGeometry(0.125, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6), 0, 1.74, 0, 0x2a2a2a); // bonnet / casque
+  for (const x of [-0.1, 0.1]) {
+    add(new THREE.CylinderGeometry(0.075, 0.07, 0.85, 6), x, 0.55, 0, 0x2a2d35);         // jambes
+    add(new THREE.BoxGeometry(0.13, 0.16, 0.3), x, 0.1, 0.03, 0x1e1e1e);                  // chaussures
+    add(new THREE.CylinderGeometry(0.05, 0.045, 0.55, 6), x * 2.4, 1.2, 0, 0xffffff);    // bras
+  }
+  return mergeGeometries(P);
+}
+
+function skisStandGeometry(): THREE.BufferGeometry {
+  // paire de skis plantés dans la neige
+  const P: THREE.BufferGeometry[] = [];
+  for (const x of [-0.06, 0.06]) { const g = new THREE.BoxGeometry(0.09, 1.7, 0.02); g.translate(x, 0.75, 0); P.push(colored(g, 0xffffff)); }
+  return mergeGeometries(P);
+}
+
+export function makeVillageLife(hf: HeightField, mask: MaskField, spots: THREE.Vector3[], groomerAt: THREE.Vector3 | null, groomerDir: THREE.Vector3): THREE.Group {
+  const g = new THREE.Group();
+  let s = 555;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const COLS = [0x1f6fe0, 0x2e9d57, 0xf2b705, 0xff6f3c, 0x7b3fe4, 0x0fb5c9, 0xe63978, 0x333a44, 0xf5f5f5, 0xa4161a, 0x6a994e];
+  const people: THREE.Matrix4[] = [], pc: number[] = [], skis: THREE.Matrix4[] = [], sc: number[] = [];
+  for (const spot of spots) {
+    const groups = 5 + Math.floor(rnd() * 5);
+    for (let k = 0; k < groups; k++) {
+      const a = rnd() * 6.28, r = 12 + rnd() * 30;
+      const gx = spot.x + Math.cos(a) * r, gz = spot.z + Math.sin(a) * r;
+      if (!hf.inside(gx, gz, 10) || mask.sample(gx, gz, 3) > 0.3) continue;
+      const n = 1 + Math.floor(rnd() * 4);
+      for (let i = 0; i < n; i++) {
+        const x = gx + (rnd() - 0.5) * 3, z = gz + (rnd() - 0.5) * 3;
+        const m = new THREE.Matrix4().compose(new THREE.Vector3(x, hf.height(x, z) - 0.05, z),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(gx - x, gz - z) + (rnd() - 0.5)), new THREE.Vector3(1, 0.92 + rnd() * 0.15, 1));
+        people.push(m); pc.push(COLS[Math.floor(rnd() * COLS.length)]);
+        if (rnd() < 0.5) {
+          const sx = x + 0.8, sz = z + (rnd() - 0.5);
+          skis.push(new THREE.Matrix4().compose(new THREE.Vector3(sx, hf.height(sx, sz) - 0.3, sz), new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.2, rnd() * 6, (rnd() - 0.5) * 0.2)), new THREE.Vector3(1, 1, 1)));
+          sc.push(COLS[Math.floor(rnd() * COLS.length)]);
+        }
+      }
+    }
+  }
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 });
+  const c = new THREE.Color();
+  if (people.length) {
+    const im = new THREE.InstancedMesh(standingGeometry(), mat, people.length);
+    people.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, c.setHex(pc[i])); });
+    im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); g.add(im);
+  }
+  if (skis.length) {
+    const im = new THREE.InstancedMesh(skisStandGeometry(), mat, skis.length);
+    skis.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, c.setHex(sc[i])); });
+    im.castShadow = true; im.computeBoundingSphere(); g.add(im);
+  }
+  // dameuse garée
+  if (groomerAt) {
+    const d = new THREE.Group();
+    const red = new THREE.MeshStandardMaterial({ color: 0xc8232c, roughness: 0.45, metalness: 0.2 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1d1f23, roughness: 0.7 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x223040, roughness: 0.1, metalness: 0.7 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 4.6), red); body.position.y = 1.5; d.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.3, 1.8), red); cab.position.set(0, 2.7, 0.9); d.add(cab);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.8, 1.85), glass); win.position.set(0, 2.85, 0.9); d.add(win);
+    for (const x of [-1.6, 1.6]) { const tr = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 5.0), dark); tr.position.set(x, 0.55, 0); d.add(tr); }
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.2, 0.3), new THREE.MeshStandardMaterial({ color: 0xd0d4da, metalness: 0.6, roughness: 0.4 })); blade.position.set(0, 0.8, 3.0); d.add(blade);
+    const tiller = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.6, 1.2), dark); tiller.position.set(0, 0.5, -3.2); d.add(tiller);
+    const light = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 0.2), new THREE.MeshStandardMaterial({ color: 0xffa000, emissive: 0x804000 })); light.position.set(0, 3.45, 0.9); d.add(light);
+    d.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    d.position.set(groomerAt.x, hf.height(groomerAt.x, groomerAt.z) - 0.1, groomerAt.z);
+    d.rotation.y = Math.atan2(groomerDir.x, groomerDir.z);
+    g.add(d);
+  }
+  // drapeaux au front de neige
+  for (const spot of spots.slice(0, 1)) {
+    for (let k = 0; k < 4; k++) {
+      const x = spot.x + 18 + k * 3.5, z = spot.z - 12;
+      if (!hf.inside(x, z, 5)) continue;
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 7, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.6 }));
+      mast.position.set(x, hf.height(x, z) + 3.5, z); mast.castShadow = true; g.add(mast);
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), new THREE.MeshStandardMaterial({ color: [0x1f3a93, 0xffffff, 0xd8262c, 0x2e9d57][k], side: THREE.DoubleSide, roughness: 0.8 }));
+      flag.position.set(x + 0.72, hf.height(x, z) + 6.4, z); g.add(flag);
+    }
+  }
+  return g;
 }

@@ -59,8 +59,12 @@ function riderGeometry(): THREE.BufferGeometry {
     add(new THREE.BoxGeometry(0.14, 0.42, 0.14), x, -2.5, 0.42, 0x2a2a30);   // tibias
     add(new THREE.BoxGeometry(0.14, 0.14, 0.3), x, -2.72, 0.5, 0x202020);    // chaussures
     add(new THREE.BoxGeometry(0.09, 0.03, 1.65), x, -2.8, 0.55, 0xd0d0d0);   // skis
-    add(new THREE.BoxGeometry(0.1, 0.36, 0.1), x * 2.1, -1.92, 0.12, 0xffffff); // bras
+    add(new THREE.CylinderGeometry(0.055, 0.05, 0.34, 6), x * 2.2, -1.95, 0.05, 0xffffff); // bras
+    add(new THREE.CylinderGeometry(0.045, 0.045, 0.3, 6).rotateX(Math.PI / 2), x * 2.2, -2.1, 0.25, 0xffffff); // avant-bras
+    add(new THREE.SphereGeometry(0.05, 6, 5), x * 2.2, -2.1, 0.42, 0x1a1a1a);   // gants
+    add(new THREE.CylinderGeometry(0.008, 0.008, 1.1, 4).rotateX(0.35), x * 2.6, -2.55, 0.62, 0xc0c4ca); // bâtons
   }
+  add(new THREE.SphereGeometry(0.1, 10, 8), 0, -1.6, 0.03, 0xd9a383);           // visage
   return mergeGeometries(P);
 }
 
@@ -74,7 +78,7 @@ function stationSign(text: string, type: string): THREE.Mesh {
   while (x.measureText(text.toUpperCase()).width > 960 && size > 40) { size -= 4; x.font = `800 ${size}px system-ui, sans-serif`; }
   x.fillText(text.toUpperCase(), 512, 160);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return new THREE.Mesh(new THREE.PlaneGeometry(6, 1.125), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, side: THREE.DoubleSide }));
+  return new THREE.Mesh(new THREE.PlaneGeometry(6, 1.125), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }));
 }
 
 export function makeLifts(lifts: Lift[], hf: HeightField, scene: THREE.Object3D, mask: MaskField, forest: Forest): LiftRuntime[] {
@@ -151,7 +155,12 @@ export function makeLifts(lifts: Lift[], hf: HeightField, scene: THREE.Object3D,
         const wheel = new THREE.Mesh(new THREE.CylinderGeometry(2.7, 2.7, 0.35, 28), darkMetal); wheel.position.set(0, H - 0.4, k === 0 ? -1 : 1); st.add(wheel);
         const sign = stationSign(lift.name || 'Remontée', lift.type);
         sign.position.set(0, H + 1.6, 7.6); st.add(sign);
-        const sign2 = sign.clone(); sign2.position.z = -7.6; st.add(sign2);
+        const sign2 = sign.clone(); sign2.position.z = -7.6; sign2.rotation.y = Math.PI; st.add(sign2);
+        // socle en béton jusqu'au terrain le plus bas (la gare ne pend plus dans le vide)
+        const plinth = new THREE.Mesh(new THREE.BoxGeometry(8.6, 12, 15.4), new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.9 }));
+        plinth.position.y = -5.6; plinth.receiveShadow = true; st.add(plinth);
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.3, 15.4), new THREE.MeshStandardMaterial({ color: 0xe9edf3, roughness: 0.9 }));
+        deck.position.y = 0.3; deck.receiveShadow = true; st.add(deck);
         // portique de départ
         const gate = new THREE.Mesh(new THREE.BoxGeometry(5, 0.25, 0.25), new THREE.MeshStandardMaterial({ color: 0xf2b705 }));
         gate.position.set(0, 2.4, 7); st.add(gate);

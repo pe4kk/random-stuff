@@ -82,6 +82,7 @@ export class Tracks {
     this.geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('across', new THREE.BufferAttribute(across, 1));
     this.geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    // fusion multiplicative : la trace assombrit (creux) ou éclaircit (bourrelet) la neige déjà éclairée
     const mat = new THREE.ShaderMaterial({
       vertexShader: `#include <common>
         #include <logdepthbuf_pars_vertex>
@@ -95,16 +96,15 @@ export class Tracks {
         void main(){
           #include <logdepthbuf_fragment>
           float x = vX;
-          // creux sombre au centre-gauche, bord clair à droite
-          float groove = 1.0 - smoothstep(0.0, 0.85, abs(x + 0.1));
-          float rim = smoothstep(0.5, 0.95, x) * (1.0 - smoothstep(0.95, 1.0, x));
-          vec3 dark = vec3(0.50, 0.58, 0.72);
-          vec3 light = vec3(1.0);
-          float a = (groove * 0.75 + rim * 0.35) * vA * (1.0 - smoothstep(120.0, 400.0, vD));
-          vec3 c = mix(dark, light, rim / max(groove + rim, 1e-3));
-          gl_FragColor = vec4(c, a);
+          float groove = 1.0 - smoothstep(0.15, 0.75, abs(x + 0.15));
+          float rim = smoothstep(0.55, 0.85, x) * (1.0 - smoothstep(0.9, 1.0, x)) + smoothstep(-0.55, -0.85, x) * (1.0 - smoothstep(-0.9, -1.0, x)) * 0.5;
+          float k = vA * (1.0 - smoothstep(150.0, 450.0, vD));
+          vec3 mul = vec3(1.0) - vec3(0.42, 0.33, 0.2) * groove * k + vec3(0.12) * rim * k;
+          gl_FragColor = vec4(mul, 1.0);
         }`,
       transparent: true, depthWrite: false,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+      blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     });
     this.mesh = new THREE.Mesh(this.geo, mat);
@@ -116,7 +116,8 @@ export class Tracks {
 
   clear() {
     this.alpha.fill(0); this.i = 0; this.last = [];
-    (this.geo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
+    const aa = this.geo.attributes.alpha as THREE.BufferAttribute;
+    aa.clearUpdateRanges(); aa.needsUpdate = true;
   }
 
   /** ajoute un point pour chaque trace (deux skis, ou plus) ; key permet plusieurs skieurs */
@@ -141,13 +142,21 @@ export class Tracks {
       P[b + 9] = p.x + side.x * w; P[b + 10] = p.y + lift; P[b + 11] = p.z + side.z * w;
       this.alpha.fill(strength, k * 4, k * 4 + 4);
       prev.copy(p);
+      this.dirtyLo = Math.min(this.dirtyLo, k); this.dirtyHi = Math.max(this.dirtyHi, k);
     }
     if (update) this.flush();
   }
 
+  private dirtyLo = Infinity; private dirtyHi = -1;
+  /** envoie à la carte graphique uniquement les segments modifiés */
   flush() {
-    (this.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (this.geo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
+    if (this.dirtyHi < 0) return;
+    const pa = this.geo.attributes.position as THREE.BufferAttribute, aa = this.geo.attributes.alpha as THREE.BufferAttribute;
+    pa.clearUpdateRanges(); aa.clearUpdateRanges();
+    pa.addUpdateRange(this.dirtyLo * 12, (this.dirtyHi - this.dirtyLo + 1) * 12);
+    aa.addUpdateRange(this.dirtyLo * 4, (this.dirtyHi - this.dirtyLo + 1) * 4);
+    pa.needsUpdate = true; aa.needsUpdate = true;
+    this.dirtyLo = Infinity; this.dirtyHi = -1;
   }
 }
 
@@ -180,9 +189,9 @@ export class Spray {
         void main(){
           #include <logdepthbuf_fragment>
           vec2 c = gl_PointCoord - 0.5; float d = length(c);
-          float a = smoothstep(0.5, 0.0, d) * clamp(vL, 0.0, 1.0) * 0.85;
+          float a = smoothstep(0.5, 0.1, d) * clamp(vL, 0.0, 1.0) * 0.7;
           if (a < 0.01) discard;
-          gl_FragColor = vec4(vec3(0.97, 0.98, 1.0), a); }`,
+          gl_FragColor = vec4(vec3(1.9, 1.95, 2.05), a); }`,
       transparent: true, depthWrite: false,
     });
     this.points = new THREE.Points(g, mat);
@@ -198,7 +207,7 @@ export class Spray {
       this.v[i * 3 + 1] = up * (0.5 + Math.random());
       this.v[i * 3 + 2] = vel.z * 0.5 + (Math.random() - 0.5) * spread;
       this.life[i] = 0.7 + Math.random() * 0.6;
-      this.size[i] = 0.12 + Math.random() * 0.3;
+      this.size[i] = 0.06 + Math.random() * 0.16;
     }
   }
   update(dt: number) {

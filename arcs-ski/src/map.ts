@@ -105,9 +105,9 @@ export class PisteMap {
       // neige bleutée ombrée
       let r = 160 + 95 * sh, g = 175 + 80 * sh, b = 200 + 55 * sh;
       // forêt : vert sombre tacheté
-      if (forest > 0.2) {
-        const t = forest * (0.75 + 0.25 * (((i * 73856093) ^ (j * 19349663)) % 7) / 7);
-        r = r * (1 - t) + (40 + 50 * sh) * t; g = g * (1 - t) + (70 + 55 * sh) * t; b = b * (1 - t) + (55 + 45 * sh) * t;
+      if (forest > 0.15) {
+        const t = Math.min(1, forest * 1.4) * (0.7 + 0.3 * ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 7) / 7);
+        r = r * (1 - t) + (30 + 40 * sh) * t; g = g * (1 - t) + (62 + 50 * sh) * t; b = b * (1 - t) + (45 + 35 * sh) * t;
       }
       if (bld > 0.4) { r = 150; g = 110; b = 90; }
       // courbes de niveau tous les 50 m
@@ -162,8 +162,14 @@ export class PisteMap {
       ctx.beginPath(); ctx.arc(b.x, b.y, hov ? 8 : 5.5, 0, 7); ctx.fill(); ctx.stroke();
     }
     // libellés
-    const label = (text: string, x: number, y: number, size: number, color: string, weight = 700, halo = '#fff') => {
+    const boxes: number[][] = [];
+    const label = (text: string, x: number, y: number, size: number, color: string, weight = 700, halo = '#fff', force = false) => {
       ctx.font = `${weight} ${size}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // pas de chevauchement entre étiquettes
+      const w = ctx.measureText(text).width + 6, h = size + 4;
+      const b = [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
+      if (!force && boxes.some(o => !(b[2] < o[0] || b[0] > o[2] || b[3] < o[1] || b[1] > o[3]))) return;
+      boxes.push(b);
       ctx.lineWidth = 3.5; ctx.strokeStyle = halo; ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
     };
     if (this.zoom > 1.4) {
@@ -205,7 +211,7 @@ export class PisteMap {
     // info survol
     if (this.hover) {
       const b = this.toScreen(this.hover.top.x, this.hover.top.z);
-      label(`Se téléporter : ${this.hover.lift.name} (${Math.round(this.hover.top.y)} m)`, b.x, b.y - 20, 14, '#111', 800);
+      label(`Se téléporter : ${this.hover.lift.name} (${Math.round(this.hover.top.y)} m)`, b.x, b.y - 20, 14, '#111', 800, '#fff', true);
     }
     // échelle
     const meters = 500, px = meters / k;

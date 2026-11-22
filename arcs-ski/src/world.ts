@@ -13,6 +13,19 @@ const HALF_W: Record<string, number> = { novice: 15, easy: 15, intermediate: 14,
 export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
   const wallsP: number[] = [], wallsUV: number[] = [], wallsC: number[] = [];
   const roofsP: number[] = [];
+  const balP: number[] = [], balC: number[] = [];
+  const box = (cx: number, cy: number, cz: number, ux: number, uz: number, len: number, dep: number, hgt: number, col: THREE.Color) => {
+    // boîte orientée selon le mur (u = direction du mur, n = normale extérieure)
+    const nx = uz, nz = -ux;
+    const corners: number[][] = [];
+    for (const [a, b, c] of [[-1, 0, 0], [1, 0, 0], [1, 1, 0], [-1, 1, 0], [-1, 0, 1], [1, 0, 1], [1, 1, 1], [-1, 1, 1]])
+      corners.push([cx + ux * a * len / 2 + nx * b * dep, cy + c * hgt, cz + uz * a * len / 2 + nz * b * dep]);
+    const faces = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [3, 2, 6, 7], [1, 5, 6, 2], [0, 3, 7, 4]];
+    for (const f of faces) {
+      for (const k of [f[0], f[1], f[2], f[0], f[2], f[3]]) { balP.push(...corners[k]); balC.push(col.r, col.g, col.b); }
+    }
+  };
+  const slabCol = new THREE.Color(0xe9edf3), railCol = new THREE.Color(0x4a3426);
   const palette = [new THREE.Color(0x6b4a33), new THREE.Color(0x4f3727), new THREE.Color(0xb7ab98), new THREE.Color(0x8a7a66), new THREE.Color(0x5c4030)];
   list.forEach((b, bi) => {
     let pts = b.pts.slice();
@@ -35,6 +48,16 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
       wallsUV.push(u, h0, u, h1, u + len, h0, u + len, h0, u, h1, u + len, h1);
       for (let k = 0; k < 6; k++) wallsC.push(col.r, col.g, col.b);
       u += len;
+      // balcons en volume sur les grandes façades
+      if (len > 6 && top - minG > 7) {
+        const ux = (c[0] - a[0]) / len, uz = (c[1] - a[1]) / len;
+        const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+        for (let y = minG + 3.9; y < top - 1.5; y += 2.9) {
+          box(mx, y, mz, ux, uz, len - 1.2, 1.3, 0.16, slabCol);
+          const nx = uz, nz = -ux;
+          box(mx + nx * 1.25, y + 0.16, mz + nz * 1.25, ux, uz, len - 1.2, 0.06, 0.95, railCol);
+        }
+      }
     }
     const contour = pts.map(p => new THREE.Vector2(p[0], p[1]));
     const tris = THREE.ShapeUtils.triangulateShape(contour, []);
@@ -64,12 +87,18 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
   float fl = floor((vWall.y - 1.0) / 2.9);
   float win = step(0.22, w.x) * step(w.x, 0.78) * step(0.28, w.y) * step(w.y, 0.86) * step(0.0, fl);
   gWin = win;
-  float lit = step(0.82, fract(sin(dot(floor(vec2(vWall.x / 3.1, fl)), vec2(12.9898, 78.233))) * 43758.5453));
-  vec3 glass = mix(vec3(0.08, 0.1, 0.13), vec3(0.95, 0.75, 0.45), lit * 0.6);
-  // balcons : bande sombre sous chaque étage
-  float balc = step(0.0, fl) * step(w.y, 0.12);
-  diffuseColor.rgb = mix(diffuseColor.rgb, glass, win);
-  diffuseColor.rgb *= 1.0 - 0.35 * balc;
+  // bardage bois vertical, cadres clairs, soubassement en pierre
+  float slat = 0.92 + 0.08 * step(0.5, fract(vWall.x / 0.16));
+  vec3 wall = diffuseColor.rgb * slat;
+  float frame = step(0.17, w.x) * step(w.x, 0.83) * step(0.22, w.y) * step(w.y, 0.92) * step(0.0, fl) * (1.0 - win);
+  float mull = (1.0 - step(0.035, abs(w.x - 0.5))) * win;
+  vec3 glass = mix(vec3(0.07, 0.09, 0.12), vec3(0.32, 0.4, 0.5), smoothstep(0.3, 0.86, w.y) * 0.6);
+  vec3 col = mix(wall, vec3(0.86, 0.84, 0.8), frame);
+  col = mix(col, glass, win * (1.0 - mull));
+  col = mix(col, vec3(0.86, 0.84, 0.8), mull);
+  float stone = 1.0 - step(2.6, vWall.y);
+  col = mix(col, vec3(0.5, 0.48, 0.45) * (0.85 + 0.15 * fract(sin(floor(vWall.x / 0.6) * 12.3 + floor(vWall.y / 0.4) * 7.1) * 431.7)), stone);
+  diffuseColor.rgb = col;
 }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.25, gWin);');
   };
@@ -82,6 +111,15 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
   roofs.castShadow = true; roofs.receiveShadow = true;
   const g = new THREE.Group();
   g.add(walls, roofs);
+  if (balP.length) {
+    const gb = new THREE.BufferGeometry();
+    gb.setAttribute('position', new THREE.Float32BufferAttribute(balP, 3));
+    gb.setAttribute('color', new THREE.Float32BufferAttribute(balC, 3));
+    gb.computeVertexNormals();
+    const bm = new THREE.Mesh(gb, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }));
+    bm.castShadow = true; bm.receiveShadow = true;
+    g.add(bm);
+  }
   return g;
 }
 
@@ -169,8 +207,11 @@ export function makeSigns(pistes: Piste[], hf: HeightField): THREE.Group {
     const y = hf.height(sx, sz) - 0.2;
     const s = new THREE.Group();
     const pm = new THREE.Mesh(post, postMat); pm.castShadow = true; s.add(pm);
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: signTexture(name, list[0].diff), roughness: 0.5, side: THREE.DoubleSide }));
-    panel.position.y = 2.2; panel.castShadow = true; s.add(panel);
+    const pmat = new THREE.MeshStandardMaterial({ map: signTexture(name, list[0].diff), roughness: 0.5 });
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), pmat);
+    panel.position.set(0, 2.2, 0.02); panel.castShadow = true; s.add(panel);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), pmat);
+    back.position.set(0, 2.2, -0.02); back.rotation.y = Math.PI; s.add(back);
     s.position.set(sx, y, sz);
     s.rotation.y = Math.atan2(-dir[0], -dir[1]);
     g.add(s);

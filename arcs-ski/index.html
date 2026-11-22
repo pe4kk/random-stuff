@@ -21,9 +21,11 @@
   #piste span { font-weight: 500; opacity: .8; }
   #chrono { right: 28px; top: 20px; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
   #minimap { left: 18px; bottom: 18px; width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 4px 20px rgba(0,0,0,.3); }
-  #msg { left: 50%; top: 32%; white-space: nowrap; transform: translate(-50%, -10px); font-size: 26px; font-weight: 800; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; padding: 0 16px; }
+  #msg { left: 50%; top: 15%; white-space: nowrap; transform: translate(-50%, -10px); font-size: 26px; font-weight: 800; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; padding: 0 16px; }
   #msg.show { opacity: 1; transform: translate(-50%, 0); }
   #fps { left: 18px; top: 16px; font-size: 13px; font-weight: 700; display: none; background: var(--glass); padding: 4px 10px; border-radius: 8px; }
+  #keys.fade { opacity: 0; transition: opacity 1.5s; }
+  #chrono small { font-size: 14px; opacity: .75; margin-left: 6px; }
   #keys { left: 230px; bottom: 22px; font-size: 13px; opacity: .85; line-height: 1.6; }
   kbd { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); border-radius: 5px; padding: 1px 6px; font-family: inherit; font-size: 12px; font-weight: 700; }
 
@@ -44,6 +46,7 @@
   #loading { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 16px;
     background: radial-gradient(1200px 600px at 50% 120%, #9fc2ea 0%, #3d6aa8 40%, #0d1b33 100%); transition: opacity .6s; }
   #loading.hide { opacity: 0; pointer-events: none; }
+  #loading.ready { background: linear-gradient(180deg, rgba(8,16,32,.78) 0%, rgba(8,16,32,.15) 38%, rgba(8,16,32,.1) 62%, rgba(8,16,32,.7) 100%); }
   #loading h1 { font-size: clamp(36px, 7vw, 72px); margin: 0; letter-spacing: -2px; font-weight: 900; }
   #loading .sub { font-size: 18px; opacity: .85; margin: 6px 0 28px; }
   #load-progress { width: min(360px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }
@@ -56,6 +59,14 @@
   .menu button.primary { background: #fff; color: var(--ink); }
   .menu button.primary kbd { color: var(--ink); border-color: rgba(0,0,0,.2); background: rgba(0,0,0,.06); }
   .menu .row { display: flex; gap: 8px; }
+  .finish { text-align: center; }
+  .finish .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; opacity: .7; margin: 0; }
+  .finish .big { font-size: 56px; font-weight: 900; letter-spacing: -1px; font-variant-numeric: tabular-nums; margin: 4px 0; }
+  .finish .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 8px; }
+  .finish .stats div { background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .finish .stats span { font-size: 12px; opacity: .7; }
+  .finish .stats strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .finish button { justify-content: center; gap: 10px; }
   .menu .row button { justify-content: center; font-size: 13px; }
   #map { background: #0d1b2e; backdrop-filter: none; align-items: stretch; justify-content: stretch; }
   #map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -120,6 +131,16 @@
     <button id="btn-sound">Son</button>
   </div>
   <button id="btn-help">Commandes <kbd>H</kbd></button>
+</div></div>
+
+<div class="panel" id="finish"><div class="card menu finish">
+  <p class="eyebrow">Arrivée · Arc 1600</p>
+  <h2>Piste Mont-Blanc</h2>
+  <div class="big" id="fin-time">0:00.00</div>
+  <p id="fin-best"></p>
+  <div class="stats"><div><span>Vitesse max</span><strong id="fin-vmax">–</strong></div><div><span>Moyenne</span><strong id="fin-avg">–</strong></div></div>
+  <button id="fin-again" class="primary">Recommencer <kbd>Entrée</kbd></button>
+  <button id="fin-close">Continuer à skier</button>
 </div></div>
 
 <div class="panel" id="map">
