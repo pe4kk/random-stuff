@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { HeightField, Lift, MaskField } from './data';
 import { Forest } from './trees';
+import { mergeStatic } from './merge';
 
 export interface LiftRuntime {
   lift: Lift;
@@ -250,6 +251,7 @@ export function makeLifts(lifts: Lift[], hf: HeightField, scene: THREE.Object3D,
     const topDir = new THREE.Vector3(a1[0] - prev[0], 0, a1[1] - prev[1]).normalize();
     const center = bottom.clone().lerp(top, 0.5);
     const radius = bottom.distanceTo(top) / 2 + 200;
+    mergeStatic(g);
     scene.add(g);
     out.push({
       lift, top, bottom, topDir,

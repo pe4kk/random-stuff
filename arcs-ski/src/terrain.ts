@@ -93,12 +93,16 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
   float slope = 1.0 - wn.y;
   float dist = length(cameraPosition - vWPos);
   vec4 dA = texture2D(uDetail, vWPos.xz / 41.0);
-  vec4 dB = texture2D(uDetail, vWPos.xz / 337.0);
-  float tint = dA.a * 0.5 + dB.a * 0.5;
+  // variations basse fréquence non répétitives (bruit procédural, 2 octaves seulement)
+  float low = vnoise(vWPos.xz / 610.0) * 0.6 + vnoise(mat2(0.8, -0.6, 0.6, 0.8) * vWPos.xz / 217.0) * 0.4;
+  vec4 dB = vec4(0.0, 0.0, 0.0, low);
+  float tint = dA.a * 0.4 + low * 0.6;
   gGround = 0.0; gEdge = 0.0;
+  float gPack = 0.0;
   #if KIND_CORE
     gPiste = smoothstep(0.35, 0.75, m.r);
-    gEdge = smoothstep(0.12, 0.35, m.r) * (1.0 - smoothstep(0.45, 0.7, m.r));
+    gEdge = smoothstep(0.1, 0.22, m.r) * (1.0 - smoothstep(0.26, 0.38, m.r));     // bourrelet de poudreuse
+    gPack = smoothstep(0.38, 0.5, m.r) * (1.0 - smoothstep(0.55, 0.72, m.r));     // bande tassée en bord de piste
     gForest = m.g;
   #elif KIND_MID
     gPiste = 0.0;
@@ -110,7 +114,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
   #if !KIND_CORE
     // limite d'enneigement dans la vallée (plus haute sur les versants au soleil)
     float snowline = 930.0 + 260.0 * (dB.a - 0.5) + 120.0 * max(0.0, wn.z);
-    gGround = (1.0 - smoothstep(snowline - 140.0, snowline + 160.0, vWPos.y)) * smoothstep(0.3, 0.7, dA.a * 0.5 + dB.a * 0.5 + 0.25);
+    gGround = (1.0 - smoothstep(snowline - 140.0, snowline + 160.0, vWPos.y)) * smoothstep(0.25, 0.6, dB.a + vnoise(vWPos.xz / 90.0) * 0.3);
   #endif
   // poudreuse : blanc pur légèrement bleuté, variations douces
   vec3 powder = vec3(0.94, 0.96, 1.0) * (0.95 + 0.07 * tint);
@@ -118,19 +122,27 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
   vec2 fall = normalize(wn.xz + vec2(1e-4));
   float across = dot(vWPos.xz, vec2(-fall.y, fall.x));
   float band = 0.5 + 0.5 * sin(across * 1.396 + dA.a * 2.0);
-  float cord = 0.5 + 0.5 * sin(across * 40.0);
-  cord = mix(cord, 0.5, smoothstep(6.0, 25.0, dist));
-  vec3 groomed = vec3(0.80, 0.84, 0.91) * (0.95 + 0.06 * band + 0.06 * cord + 0.04 * tint);
+  // velours filtré : s'efface quand les stries deviennent plus fines qu'un pixel (pas de moiré)
+  float cw = fwidth(across * 40.0 / 6.2832);
+  float cord = mix(0.5 + 0.5 * sin(across * 40.0), 0.5, smoothstep(0.25, 0.7, cw));
+  float bw = fwidth(across * 1.396 / 6.2832);
+  band = mix(band, 0.5, smoothstep(0.3, 0.8, bw));
+  vec3 groomed = vec3(0.72, 0.77, 0.87) * (0.94 + 0.09 * band + 0.08 * cord + 0.04 * tint);
   vec3 col = mix(powder, groomed, gPiste);
-  // bourrelet de neige repoussée en bord de piste
-  col = mix(col, vec3(1.0, 1.0, 1.02), gEdge * 0.6);
+  col = mix(col, groomed * vec3(0.9, 0.92, 0.96), gPack * 0.8);
+  col = mix(col, vec3(1.02, 1.03, 1.05), gEdge * 0.85);
   // rochers sur les fortes pentes
   float rockN = dB.a;
   gRock = smoothstep(0.30, 0.42, slope + 0.14 * (rockN - 0.5));
   #if !KIND_CORE
     gRock = smoothstep(0.33, 0.48, slope + 0.18 * (rockN - 0.5));
   #endif
-  vec3 rock = mix(vec3(0.20, 0.19, 0.18), vec3(0.44, 0.41, 0.37), dA.a);
+  // roche en projection triplanaire (pas d'étirement sur les falaises)
+  vec3 bw3 = pow(abs(wn), vec3(4.0)); bw3 /= (bw3.x + bw3.y + bw3.z);
+  float rx = texture2D(uDetail, vWPos.zy / 23.0).a, ry = dA.a, rz = texture2D(uDetail, vWPos.xy / 23.0).a;
+  float rt = rx * bw3.x + ry * bw3.y + rz * bw3.z;
+  float strata = 0.5 + 0.5 * sin(vWPos.y * 0.9 + rt * 5.0);
+  vec3 rock = mix(vec3(0.17, 0.16, 0.15), vec3(0.47, 0.44, 0.40), rt * 0.75 + strata * 0.25);
   col = mix(col, rock, gRock * (1.0 - gPiste));
   // forêt au loin : vert sombre tacheté de neige
   float fFade = 1.0;
@@ -152,7 +164,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
 reflectedLight.indirectDiffuse *= vec3(0.80, 0.91, 1.18);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = mix(0.92, 0.62, gPiste);
+roughnessFactor = mix(0.93, 0.5, gPiste);
 roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 {
@@ -160,13 +172,14 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   // relief fin : texture filtrée (mipmaps) à deux échelles, plus marqué en poudreuse
   vec3 n1 = texture2D(uDetail, vWPos.xz / 9.0).xyz * 2.0 - 1.0;
   vec3 n2 = texture2D(uDetail, vWPos.xz / 61.0 + 0.37).xyz * 2.0 - 1.0;
-  float powderK = (1.0 - gPiste) * (1.0 - gRock) * (1.0 - gGround);
+  float powderK = (1.0 - gPiste) * (1.0 - gRock) * (1.0 - gGround) + gEdge * 0.5;
   float a1 = mix(0.25, 0.9, powderK) * (1.0 - smoothstep(40.0, 220.0, d));
   float a2 = mix(0.15, 1.3, powderK) * (1.0 - smoothstep(150.0, 900.0, d));
   vec3 pert = vec3(n1.x, 0.0, n1.z) * a1 + vec3(n2.x, 0.0, n2.z) * a2;
   // ondulations de vent (sastrugi) sur la poudreuse
   vec2 wd = normalize(vec2(0.8, 0.6));
-  float rip = cos(dot(vWPos.xz, wd) * 0.85 + n2.x * 6.0);
+  float rph = dot(vWPos.xz, wd) * 0.85 + n2.x * 6.0;
+  float rip = cos(rph) * (1.0 - smoothstep(0.2, 0.6, fwidth(rph / 6.2832)));
   pert.xz += wd * rip * 0.18 * powderK * (1.0 - smoothstep(30.0, 300.0, d));
   normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
 }`)

@@ -24,6 +24,7 @@
   #msg { left: 50%; top: 15%; white-space: nowrap; transform: translate(-50%, -10px); font-size: 26px; font-weight: 800; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; padding: 0 16px; }
   #msg.show { opacity: 1; transform: translate(-50%, 0); }
   #fps { left: 18px; top: 16px; font-size: 13px; font-weight: 700; display: none; background: var(--glass); padding: 4px 10px; border-radius: 8px; }
+  body.title .hud { display: none !important; }
   #keys.fade { opacity: 0; transition: opacity 1.5s; }
   #chrono small { font-size: 14px; opacity: .75; margin-left: 6px; }
   #keys { left: 230px; bottom: 22px; font-size: 13px; opacity: .85; line-height: 1.6; }
@@ -159,7 +160,7 @@
   <div id="load-label">Chargement…</div>
   <button id="btn-start">Skier ▸</button>
   <div class="ctl-mini"><kbd>←</kbd> <kbd>→</kbd> tourner &nbsp; <kbd>↑</kbd> schuss &nbsp; <kbd>↓</kbd> freiner &nbsp; <kbd>Espace</kbd> saut &nbsp; <kbd>R</kbd> remonter &nbsp; <kbd>M</kbd> plan &nbsp; <kbd>Échap</kbd> menu</div>
-  <div class="credit">Relief et photos : © IGN (RGE ALTI®, BD ORTHO®) · Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL)</div>
+  <div class="credit">Relief : © IGN (RGE ALTI®) · masque forestier de la vallée : © IGN (BD ORTHO®) · Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL)</div>
 </div>
 <script type="module" src="/src/main.ts"></script>
 </body>

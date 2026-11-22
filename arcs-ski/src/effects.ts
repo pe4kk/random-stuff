@@ -102,7 +102,7 @@ export class Tracks {
           vec3 mul = vec3(1.0) - vec3(0.42, 0.33, 0.2) * groove * k + vec3(0.12) * rim * k;
           gl_FragColor = vec4(mul, 1.0);
         }`,
-      transparent: true, depthWrite: false,
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
       blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,

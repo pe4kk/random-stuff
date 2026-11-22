@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { HeightField, MaskField, Piste } from './data';
 import { Forest } from './trees';
+import { mergeStatic } from './merge';
 
 function colored(g: THREE.BufferGeometry, c: number) {
   const ng = g.index ? g.toNonIndexed() : g;
@@ -206,6 +207,7 @@ export function makeFunicular(lines: { name: string; pts: [number, number][] }[]
   band.position.y = 2.6; car.add(band);
   const roof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.25, 25), new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.8 }));
   roof.position.y = 3.8; car.add(roof);
+  car.userData.dynamic = true;
   const cars = [car, car.clone()];
   cars.forEach(c => g.add(c));
   // gare d'arrivée (extrémité haute dans la zone détaillée)
@@ -240,6 +242,7 @@ export function makeFunicular(lines: { name: string; pts: [number, number][] }[]
     out.copy(P[lo]).lerp(P[hi], f);
     return { a: P[lo], b: P[hi] };
   };
+  mergeStatic(g);
   const p = new THREE.Vector3(), p2 = new THREE.Vector3();
   return {
     group: g,
@@ -289,6 +292,24 @@ function skisStandGeometry(): THREE.BufferGeometry {
   return mergeGeometries(P);
 }
 
+export const lifeTime = { value: 0 };
+function swayMaterial(mat: THREE.MeshStandardMaterial, amp: number, freq: number) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uLifeT = lifeTime;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uLifeT;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        float ph = float(gl_InstanceID) * 1.7;
+      #else
+        float ph = position.x * 3.0;
+      #endif
+      transformed.x += sin(uLifeT * ${freq.toFixed(2)} + ph) * ${amp.toFixed(3)} * max(position.y, 0.0);
+      transformed.z += cos(uLifeT * ${(freq * 0.7).toFixed(2)} + ph * 1.3) * ${(amp * 0.6).toFixed(3)} * max(position.y, 0.0);`);
+  };
+  mat.customProgramCacheKey = () => 'sway' + amp + freq;
+  return mat;
+}
+
 export function makeVillageLife(hf: HeightField, mask: MaskField, spots: THREE.Vector3[], groomerAt: THREE.Vector3 | null, groomerDir: THREE.Vector3): THREE.Group {
   const g = new THREE.Group();
   let s = 555;
@@ -316,9 +337,10 @@ export function makeVillageLife(hf: HeightField, mask: MaskField, spots: THREE.V
     }
   }
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 });
+  const pmat = swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 }), 0.025, 1.3);
   const c = new THREE.Color();
   if (people.length) {
-    const im = new THREE.InstancedMesh(standingGeometry(), mat, people.length);
+    const im = new THREE.InstancedMesh(standingGeometry(), pmat, people.length);
     people.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, c.setHex(pc[i])); });
     im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); g.add(im);
   }
@@ -352,9 +374,22 @@ export function makeVillageLife(hf: HeightField, mask: MaskField, spots: THREE.V
       if (!hf.inside(x, z, 5)) continue;
       const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 7, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.6 }));
       mast.position.set(x, hf.height(x, z) + 3.5, z); mast.castShadow = true; g.add(mast);
-      const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), new THREE.MeshStandardMaterial({ color: [0x1f3a93, 0xffffff, 0xd8262c, 0x2e9d57][k], side: THREE.DoubleSide, roughness: 0.8 }));
-      flag.position.set(x + 0.72, hf.height(x, z) + 6.4, z); g.add(flag);
+      const fg = new THREE.PlaneGeometry(1.4, 0.9, 8, 2); fg.translate(0.7, 0, 0);
+      const fp = fg.attributes.position as THREE.BufferAttribute;
+      const fm = new THREE.MeshStandardMaterial({ color: [0x1f3a93, 0xffffff, 0xd8262c, 0x2e9d57][k], side: THREE.DoubleSide, roughness: 0.8 });
+      fm.onBeforeCompile = (sh) => {
+        sh.uniforms.uLifeT = lifeTime;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uLifeT;')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
+          transformed.z += sin(position.x * 4.0 - uLifeT * 6.0 + ${k}.0) * 0.12 * position.x;`);
+      };
+      fm.customProgramCacheKey = () => 'flag' + k;
+      void fp;
+      const flag = new THREE.Mesh(fg, fm);
+      flag.userData.dynamic = true;
+      flag.position.set(x, hf.height(x, z) + 6.4, z); g.add(flag);
     }
   }
+  mergeStatic(g);
   return g;
 }

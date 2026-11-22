@@ -93,6 +93,24 @@ for f in feats:
     elif 'building' in t and all(abs(p[0]) < CORE_HALF and abs(p[1]) < CORE_HALF for p in pts):
         buildings.append({'pts': pts, 'levels': t.get('building:levels')})
 
+far_buildings = []
+for f in feats:
+    t = f['tags']
+    if f.get('node') or 'building' not in t:
+        continue
+    pts = [to_local(*c) for c in f['coords']]
+    if all(abs(p[0]) < CORE_HALF - 5 and abs(p[1]) < CORE_HALF - 5 for p in pts):
+        continue
+    if pts[0] == pts[-1]:
+        pts = pts[:-1]
+    if len(pts) < 3:
+        continue
+    try:
+        lv = float(t.get('building:levels', 0))
+    except ValueError:
+        lv = 0
+    far_buildings.append({'pts': [[round(x, 1), round(z, 1)] for x, z in pts], 'h': round(lv * 3 if lv else 7.5, 1)})
+
 # --------------------------------------------------------------- masque pistes
 SS = 1  # rasterisation à la résolution core
 mask_img = Image.new('L', (CORE_N, CORE_N), 0)
@@ -236,7 +254,7 @@ if os.path.exists(os.path.join(RAW, 'mid_ortho.jpg')):
     Image.fromarray(np.clip(fm * 255, 0, 255).astype(np.uint8), 'L').save(os.path.join(OUT, 'mid_forest.png'), optimize=True)
 
 # ------------------------------------------------------------------- features
-json.dump({'pistes': pistes, 'lifts': lifts, 'buildings': bout, 'funiculars': funiculars, 'places': places, 'pois': pois, 'roads': roads,
+json.dump({'pistes': pistes, 'lifts': lifts, 'buildings': bout, 'funiculars': funiculars, 'places': places, 'pois': pois, 'roads': roads, 'farBuildings': far_buildings,
            'meta': {'cx': CX, 'cy': CY, 'coreN': CORE_N, 'coreHalf': CORE_HALF, 'hOff': H_OFF, 'hScale': H_SCALE,
                     'midN': 1024, 'midHalf': 8192, 'farN': 1024, 'farHalf': 40960, 'nTrees': n_trees}},
           open(os.path.join(OUT, 'features.json'), 'w'), separators=(',', ':'))

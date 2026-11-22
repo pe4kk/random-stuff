@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Building, HeightField, MaskField, Piste } from './data';
+import { mergeStatic } from './merge';
 
 export const DIFF_COLOR: Record<string, number> = {
   novice: 0x22a34a, easy: 0x1f6fe0, intermediate: 0xd8262c, advanced: 0x111111, expert: 0x111111, freeride: 0xf08a1c,
@@ -38,6 +39,11 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
     const base = Math.min(minG, b.base) - 1.5;
     const top = Math.max(minG + 3, b.base + b.h);
     const col = palette[bi % palette.length];
+    // direction de l'aval au centre du bâtiment
+    let cxm = 0, czm = 0; for (const p of pts) { cxm += p[0]; czm += p[1]; } cxm /= pts.length; czm /= pts.length;
+    const gx = hf.height(cxm - 10, czm) - hf.height(cxm + 10, czm), gz = hf.height(cxm, czm - 10) - hf.height(cxm, czm + 10);
+    const gl = Math.hypot(gx, gz) || 1;
+    const downX = gx / gl, downZ = gz / gl;
     let u = 0;
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i], c = pts[(i + 1) % pts.length];
@@ -49,10 +55,15 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
       for (let k = 0; k < 6; k++) wallsC.push(col.r, col.g, col.b);
       u += len;
       // balcons en volume sur les grandes façades
-      if (len > 6 && top - minG > 7) {
-        const ux = (c[0] - a[0]) / len, uz = (c[1] - a[1]) / len;
+      const ux0 = (c[0] - a[0]) / len, uz0 = (c[1] - a[1]) / len;
+      const fx = uz0, fz = -ux0;                       // normale extérieure de la façade
+      const facing = fz > 0.25 || (fx * downX + fz * downZ) > 0.35;   // sud ou aval
+      if (len > 6 && top - minG > 7 && facing) {
+        const ux = ux0, uz = uz0;
         const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
-        for (let y = minG + 3.9; y < top - 1.5; y += 2.9) {
+        // même origine que les rangées de fenêtres (base + 1 m, étages de 2,9 m)
+        const k0 = Math.ceil((minG + 1.2 - (base + 1.1)) / 2.9);
+        for (let y = base + 1.1 + Math.max(1, k0) * 2.9; y < top - 1.5; y += 2.9) {
           box(mx, y, mz, ux, uz, len - 1.2, 1.3, 0.16, slabCol);
           const nx = uz, nz = -ux;
           box(mx + nx * 1.25, y + 0.16, mz + nz * 1.25, ux, uz, len - 1.2, 0.06, 0.95, railCol);
@@ -216,5 +227,38 @@ export function makeSigns(pistes: Piste[], hf: HeightField): THREE.Group {
     s.rotation.y = Math.atan2(-dir[0], -dir[1]);
     g.add(s);
   }
+  mergeStatic(g);
   return g;
+}
+
+// ------------------------------------------------------- bâtiments de la vallée (Bourg-Saint-Maurice…)
+export function makeFarBuildings(list: { pts: [number, number][]; h: number }[], height: (x: number, z: number) => number): THREE.Mesh {
+  const P: number[] = [], C: number[] = [];
+  const walls = [new THREE.Color(0xc9bfae), new THREE.Color(0xb5a892), new THREE.Color(0xd8d0c2), new THREE.Color(0x8a7058)];
+  const roofSnow = new THREE.Color(0xe8ecf2), roofSlate = new THREE.Color(0x4a4d52);
+  list.forEach((b, i) => {
+    let pts = b.pts;
+    let area = 0;
+    for (let k = 0; k < pts.length; k++) { const a = pts[k], c = pts[(k + 1) % pts.length]; area += a[0] * c[1] - c[0] * a[1]; }
+    if (Math.abs(area) < 20) return;
+    if (area < 0) pts = pts.slice().reverse();
+    let g = Infinity; for (const p of pts) g = Math.min(g, height(p[0], p[1]));
+    const base = g - 2, top = g + b.h;
+    const wc = walls[i % walls.length];
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[k], c = pts[(k + 1) % pts.length];
+      P.push(a[0], base, a[1], a[0], top, a[1], c[0], base, c[1], c[0], base, c[1], a[0], top, a[1], c[0], top, c[1]);
+      for (let j = 0; j < 6; j++) C.push(wc.r, wc.g, wc.b);
+    }
+    const rc = top > 1150 || (i % 3 === 0) ? roofSnow : roofSlate;
+    const tris = THREE.ShapeUtils.triangulateShape(pts.map(p => new THREE.Vector2(p[0], p[1])), []);
+    for (const t of tris) for (const k of [t[0], t[2], t[1]]) { P.push(pts[k][0], top + 0.3, pts[k][1]); C.push(rc.r, rc.g, rc.b); }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }));
+  m.receiveShadow = false; m.castShadow = false;
+  return m;
 }

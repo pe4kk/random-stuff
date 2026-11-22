@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import { HeightField, MaskField, Piste } from './data';
 import { Forest } from './trees';
@@ -107,23 +108,51 @@ class Pilot {
 const JACKETS = [0x1f6fe0, 0x2e9d57, 0xf2b705, 0xff6f3c, 0x7b3fe4, 0x0fb5c9, 0xe63978, 0x222831, 0xffffff, 0xa4161a, 0x3d5a80, 0x8ac926];
 const PANTS = [0x1b1f2a, 0x2b2d42, 0x3a3a3a, 0x283618, 0x14213d, 0xf1faee];
 
+/** silhouette de skieur en position (une seule géométrie, instanciée pour les skieurs lointains) */
+function farSkierGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const add = (g: THREE.BufferGeometry, x: number, y: number, z: number, c: number, rx = 0) => {
+    g.rotateX(rx); g.translate(x, y, z);
+    const ng = g.index ? g.toNonIndexed() : g; const col = new THREE.Color(c);
+    const n = ng.attributes.position.count, a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = col.r; a[i * 3 + 1] = col.g; a[i * 3 + 2] = col.b; }
+    ng.setAttribute('color', new THREE.BufferAttribute(a, 3)); if (ng.attributes.uv) ng.deleteAttribute('uv');
+    parts.push(ng);
+  };
+  add(new THREE.CylinderGeometry(0.2, 0.16, 0.55, 8), 0, 1.15, 0.08, 0xffffff, 0.45);
+  add(new THREE.SphereGeometry(0.13, 8, 6), 0, 1.5, 0.22, 0xeeeeee);
+  for (const x of [-0.12, 0.12]) {
+    add(new THREE.CylinderGeometry(0.075, 0.07, 0.48, 6), x, 0.75, 0.1, 0x2a2d35, -0.5);
+    add(new THREE.CylinderGeometry(0.07, 0.07, 0.48, 6), x, 0.32, 0.12, 0x2a2d35, 0.4);
+    add(new THREE.BoxGeometry(0.09, 0.03, 1.65), x, 0.02, 0.05, 0xdddddd);
+    add(new THREE.CylinderGeometry(0.05, 0.045, 0.5, 6), x * 2.3, 1.0, 0.3, 0xffffff, -0.9);
+  }
+  return mergeGeometries(parts);
+}
+
 export class Crowd {
-  skiers: { sk: Skier; pilot: Pilot; key: number; stuck: number }[] = [];
+  skiers: { sk: Skier; pilot: Pilot; key: number; stuck: number; color: number }[] = [];
+  private far: THREE.InstancedMesh;
+  private m4 = new THREE.Matrix4();
   private s = 99;
   private rnd = () => ((this.s = (this.s * 16807) % 2147483647) / 2147483647);
 
   constructor(public routes: Route[], private hf: HeightField, private mask: MaskField, private forest: Forest,
     scene: THREE.Object3D, count: number, private tracks: Tracks) {
+    this.far = new THREE.InstancedMesh(farSkierGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), Math.max(1, count));
+    this.far.frustumCulled = false; this.far.count = 0;
+    scene.add(this.far);
     if (!routes.length) return;
     for (let i = 0; i < count; i++) {
+      const jacketC = JACKETS[Math.floor(this.rnd() * JACKETS.length)];
       const model = new SkierModel({
-        jacket: JACKETS[Math.floor(this.rnd() * JACKETS.length)], pants: PANTS[Math.floor(this.rnd() * PANTS.length)],
+        jacket: jacketC, pants: PANTS[Math.floor(this.rnd() * PANTS.length)],
         helmet: this.rnd() < 0.5 ? 0x222222 : JACKETS[Math.floor(this.rnd() * JACKETS.length)],
         ski: JACKETS[Math.floor(this.rnd() * JACKETS.length)],
-      });
+      }, true);
       const sk = new Skier(hf, mask, forest, model);
       scene.add(model.root);
-      const entry = { sk, pilot: null as unknown as Pilot, key: i + 10, stuck: 0 };
+      const entry = { sk, pilot: null as unknown as Pilot, key: i + 10, stuck: 0, color: jacketC };
       this.respawn(entry, this.rnd() * 0.9);
       this.skiers.push(entry);
     }
@@ -142,6 +171,8 @@ export class Crowd {
   private _l = new THREE.Vector3(); private _r = new THREE.Vector3(); private _s = new THREE.Vector3();
 
   update(dt: number, cam: THREE.Vector3, steps: number, stepDt: number) {
+    let nf = 0;
+    const col = new THREE.Color();
     for (const e of this.skiers) {
       const far = Math.hypot(e.sk.pos.x - cam.x, e.sk.pos.z - cam.z) > 900;
       // les skieurs lointains sont simulés moins finement
@@ -157,8 +188,14 @@ export class Crowd {
       if (e.stuck > 6) this.respawn(e);
       const model = e.sk.model;
       const dc = Math.hypot(e.sk.pos.x - cam.x, e.sk.pos.z - cam.z);
-      model.root.visible = dc < 450;
-      const shadow = dc < 70;
+      // détaillé de près, silhouette instanciée au loin (un seul appel de dessin)
+      const near = dc < 70;
+      model.root.visible = near;
+      if (!near && dc < 600 && this.far) {
+        this.m4.makeRotationY(e.sk.yaw).setPosition(e.sk.pos.x, e.sk.pos.y, e.sk.pos.z);
+        this.far.setMatrixAt(nf, this.m4); this.far.setColorAt(nf, col.setHex(e.color)); nf++;
+      }
+      const shadow = dc < 60;
       if (shadow !== (e as any).shadow) { (e as any).shadow = shadow; model.root.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = shadow; }); }
       if (dc < 450) {
         e.sk.updateModel(dt);
@@ -172,6 +209,11 @@ export class Crowd {
       }
     }
     this.tracks.flush();
+    if (this.far) {
+      this.far.count = nf;
+      this.far.instanceMatrix.needsUpdate = true;
+      if (this.far.instanceColor) this.far.instanceColor.needsUpdate = true;
+    }
   }
 
   /** descentes simulées au chargement pour que les pistes portent déjà des traces */

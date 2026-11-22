@@ -105,8 +105,8 @@ export class PisteMap {
       // neige bleutée ombrée
       let r = 160 + 95 * sh, g = 175 + 80 * sh, b = 200 + 55 * sh;
       // forêt : vert sombre tacheté
-      if (forest > 0.15) {
-        const t = Math.min(1, forest * 1.4) * (0.7 + 0.3 * ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 7) / 7);
+      if (forest > 0.08) {
+        const t = Math.min(1, forest * 2.2) * (0.7 + 0.3 * ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 7) / 7);
         r = r * (1 - t) + (30 + 40 * sh) * t; g = g * (1 - t) + (62 + 50 * sh) * t; b = b * (1 - t) + (45 + 35 * sh) * t;
       }
       if (bld > 0.4) { r = 150; g = 110; b = 90; }

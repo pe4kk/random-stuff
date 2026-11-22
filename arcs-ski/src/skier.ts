@@ -126,7 +126,7 @@ export class SkierModel {
     this.hips.position.set(0, 0.24 + 2 * L * Math.cos(a) * 0.97, -Math.sin(a) * 0.17);
     const plough = brake * 0.13;
     this.skis[0].rotation.y = plough; this.skis[1].rotation.y = -plough;
-    this.skis[0].position.x = -0.12 - brake * 0.07; this.skis[1].position.x = 0.12 + brake * 0.07;
+    this.skis[0].position.x = -0.14 - brake * 0.07; this.skis[1].position.x = 0.14 + brake * 0.07;
     // angulation : genoux vers l'intérieur du virage, hanches décalées
     const ang = lean * 0.55;
     this.hips.position.x = -lean * 0.12;
@@ -137,8 +137,8 @@ export class SkierModel {
     });
     this.lean.rotation.z = lean;
     this.torso.rotation.z = -lean * 0.55;
-    this.torso.rotation.x = 0.28 + a * 0.5 + tuck * 0.55;
-    this.head.rotation.x = -(0.28 + a * 0.5 + tuck * 0.55) * 0.7;   // regard vers l'avant
+    this.torso.rotation.x = 0.18 + a * 0.42 + tuck * 0.6;
+    this.head.rotation.x = -(0.18 + a * 0.42 + tuck * 0.6) * 0.75;   // regard vers l'avant
     const swing = Math.sin(t * 5) * push;
     this.arms.forEach((arm, i) => {
       const s = i === 0 ? -1 : 1;
@@ -179,7 +179,7 @@ export class Skier {
   private jumpHeld = false;
   private tumble = new THREE.Euler();
   events: string[] = [];
-  plant = 1; plantSide = 0; private turnSign = 0; private edgeLoss = 0;
+  plant = 1; plantSide = 0; private turnSign = 0; private edgeLoss = 0; private warned = false;
 
   constructor(public hf: HeightField, public mask: MaskField, public forest: Forest, model?: SkierModel | null) {
     this.model = model ?? new SkierModel();
@@ -269,8 +269,8 @@ export class Skier {
       if (need > grip) { skid = Math.min(1, (need - grip) / (grip + 1)); aLat = Math.sign(aLat) * grip; }
       _a.addScaledVector(_l, aLat);
       // frottements
-      const mu = 0.035 + 0.035 * powder + 0.15 * this.brake + 0.12 * skid;
-      const cda = 0.55 - 0.32 * this.tuck + 0.25 * this.brake;
+      const mu = 0.045 + 0.035 * powder + 0.15 * this.brake + 0.12 * skid;
+      const cda = 0.6 - 0.28 * this.tuck + 0.25 * this.brake;
       const drag = mu * N + (0.5 * 1.2 * cda / 80) * speed * speed + powder * (0.01 * speed * speed + 0.25 * speed);
       if (speed > 0.01) {
         const dec = Math.min(drag, speed / dt);
@@ -291,7 +291,11 @@ export class Skier {
       if (sgn !== 0) this.turnSign = sgn;
       // perte de carre : virage trop serré à grande vitesse
       if (skid > 0.7 && speed > 17 && this.brake < 0.3) this.edgeLoss += dt; else this.edgeLoss = Math.max(0, this.edgeLoss - dt * 2);
-      if (this.edgeLoss > 0.45) { this.edgeLoss = 0; this.crash('Perte de carre !'); }
+      // signe avant-coureur : vibration, gerbe et crissement avant la chute ; pas de chute sur les replats
+      if (this.edgeLoss > 0.15 && !this.warned) { this.warned = true; this.events.push('edgewarn'); }
+      if (this.edgeLoss > 0.08) this.leanAngle += (Math.random() - 0.5) * 0.12;
+      if (this.edgeLoss === 0) this.warned = false;
+      if (this.edgeLoss > 0.6 && n.y < 0.975) { this.edgeLoss = 0; this.warned = false; this.crash('Perte de carre !'); }
 
       // inclinaison visuelle = accélération latérale
       const latAcc = vf * yawRate;

@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { GameData, HeightField, MaskField, Piste, loadAll } from './data';
 import { CoreTerrain, makeBackdrop, makeSnowMaterial } from './terrain';
 import { Forest } from './trees';
-import { DIFF_COLOR, DIFF_LABEL, LiftRuntime, makeBuildings, makeLifts, makePistePoles, makeSigns } from './world';
+import { DIFF_COLOR, DIFF_LABEL, LiftRuntime, makeFarBuildings, makeBuildings, makeLifts, makePistePoles, makeSigns } from './world';
 import { Skier } from './skier';
 import { Tracks, Spray, makeSky } from './effects';
 import { Input } from './input';
 import { Crowd, buildRoutes } from './npc';
-import { makeSnowGuns, makeRocks, makeFunicular, makeVillageLife } from './props';
+import { makeSnowGuns, makeRocks, makeFunicular, makeVillageLife, lifeTime } from './props';
 import { PisteMap } from './map';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -120,12 +120,13 @@ function build(data: GameData) {
   const midMat = makeSnowMaterial('mid', midTex, meta.midHalf);
   scene.add(makeBackdrop(midHF, 320, meta.coreHalf - 40, 30, midMat));
   const farMat = makeSnowMaterial('far', null, meta.farHalf);
-  scene.add(makeBackdrop(farHF, 256, meta.midHalf - 300, 80, farMat));
+  scene.add(makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat));
 
   // ------------------------------------------------------- monde
   const forest = new Forest(data.trees, hf, mask);
   scene.add(forest.group);
   scene.add(makeBuildings(data.features.buildings, hf));
+  if (data.features.farBuildings) scene.add(makeFarBuildings(data.features.farBuildings, (x, z) => midHF.height(x, z)));
   const lifts = makeLifts(data.features.lifts, hf, scene, mask, forest);
   scene.add(makePistePoles(data.features.pistes, hf, mask));
   scene.add(makeSigns(data.features.pistes, hf));
@@ -213,7 +214,7 @@ function build(data: GameData) {
     let target: THREE.Vector3, look: THREE.Vector3;
     if (camMode === 2) {
       const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.55, 0.2));
-      target = h; look = h.clone().addScaledVector(head, 10).add(new THREE.Vector3(0, -1.5, 0));
+      target = h.clone().addScaledVector(head, -0.35); look = h.clone().addScaledVector(head, 6).add(new THREE.Vector3(0, -2.4, 0));
     } else {
       let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
       let height = (camMode === 0 ? 3.6 : 8) * camZoom;
@@ -399,7 +400,7 @@ function build(data: GameData) {
     { name: 'Basse', ratio: 0.8, shadow: 1024, hi: 150, lo: 500 },
   ];
   let quality = 1;
-  try { const q = Number(localStorage.getItem('arcs-quality')); if (q >= 0 && q < 3) quality = q; } catch { /* ignore */ }
+  try { const sq = localStorage.getItem('arcs-quality'); if (sq !== null) { const q = Number(sq); if (q >= 0 && q < 3) quality = q; } } catch { /* ignore */ }
   let autoQ = true;
   function applyQuality(q: number, announce = true) {
     quality = q;
@@ -496,6 +497,7 @@ function build(data: GameData) {
       for (const e of skier.events) {
         if (e === 'crash') message(skier.crashMsg + '  (R : retour en haut)', 2.4);
         if (e === 'land') spray.emit(skier.pos, skier.vel, 40, 3, 2);
+        if (e === 'edgewarn') { message('Attention : les carres décrochent !', 0.9); spray.emit(skier.pos, skier.vel, 30, 2.5, 2.5); }
       }
       skier.events.length = 0;
       updateChrono(dt);
@@ -527,6 +529,7 @@ function build(data: GameData) {
     if (funi) funi.update(elapsed);
     if (!(paused || tpOpen || map.open)) crowd.update(dt, camera.position, Math.max(1, Math.round(dt / (1 / 60))), Math.min(dt, 0.05) / Math.max(1, Math.round(dt / (1 / 60))));
     (sky.material as THREE.ShaderMaterial).uniforms.uTime.value = elapsed;
+    lifeTime.value = elapsed;
     if (!started && mb) {
       // écran titre : vol lent autour d'Arc 1600 et de la piste Mont-Blanc
       const c = mb.bottom.clone().lerp(mb.top, 0.45);
@@ -584,6 +587,7 @@ function build(data: GameData) {
 
   // écran titre
   const loading = $('loading');
+  document.body.classList.add('title');
   var started = false;
   loading.classList.add('ready');
   loadLabel.textContent = 'Prêt';
@@ -592,6 +596,7 @@ function build(data: GameData) {
   go.style.display = 'inline-flex';
   go.onclick = () => {
     started = true;
+    document.body.classList.remove('title');
     camSnap = true;
     core.warm(skier.pos);
     loading.classList.add('hide');

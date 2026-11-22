@@ -11,6 +11,7 @@ export interface Features {
   pistes: Piste[]; lifts: Lift[]; buildings: Building[]; meta: Meta;
   funiculars: { name: string; pts: [number, number][] }[];
   places: Place[]; pois: Place[]; roads: { kind: string; pts: [number, number][] }[];
+  farBuildings?: { pts: [number, number][]; h: number }[];
 }
 
 export interface GameData {
