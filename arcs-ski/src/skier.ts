@@ -26,12 +26,12 @@ export class SkierModel {
   skis: THREE.Group[] = [];
   readonly L = 0.46;
 
-  constructor() {
-    const jacket = new THREE.MeshStandardMaterial({ color: 0xd8262c, roughness: 0.55 });
-    const pants = new THREE.MeshStandardMaterial({ color: 0x1b1f2a, roughness: 0.7 });
-    const helmet = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.3, metalness: 0.1 });
+  constructor(colors: { jacket?: number; pants?: number; helmet?: number; ski?: number } = {}) {
+    const jacket = new THREE.MeshStandardMaterial({ color: colors.jacket ?? 0xd8262c, roughness: 0.55 });
+    const pants = new THREE.MeshStandardMaterial({ color: colors.pants ?? 0x1b1f2a, roughness: 0.7 });
+    const helmet = new THREE.MeshStandardMaterial({ color: colors.helmet ?? 0xf5f5f5, roughness: 0.3, metalness: 0.1 });
     const goggle = new THREE.MeshStandardMaterial({ color: 0xffa21c, roughness: 0.1, metalness: 0.9, emissive: 0x331500 });
-    const skiMat = new THREE.MeshStandardMaterial({ color: 0x1565ff, roughness: 0.35, metalness: 0.2 });
+    const skiMat = new THREE.MeshStandardMaterial({ color: colors.ski ?? 0x1565ff, roughness: 0.35, metalness: 0.2 });
     const bootMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 });
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xbfc4cc, roughness: 0.3, metalness: 0.8 });
     const skin = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8 });
@@ -117,7 +117,7 @@ export class SkierModel {
 
 // ---------------------------------------------------------------- physique
 export class Skier {
-  model = new SkierModel();
+  model: SkierModel;
   pos = new THREE.Vector3();
   vel = new THREE.Vector3();
   yaw = 0;
@@ -142,7 +142,9 @@ export class Skier {
   private tumble = new THREE.Euler();
   events: string[] = [];
 
-  constructor(public hf: HeightField, public mask: MaskField, public forest: Forest) {}
+  constructor(public hf: HeightField, public mask: MaskField, public forest: Forest, model?: SkierModel | null) {
+    this.model = model ?? new SkierModel();
+  }
 
   get speed() { return this.vel.length(); }
 
@@ -330,21 +332,22 @@ export class Skier {
       this.vel.multiplyScalar(0.3);
       this.pos.y = hf.height(this.pos.x, this.pos.z);
     }
-    // arbres
+    // arbres et obstacles
     const near = this.forest.nearest(this.pos.x, this.pos.z, 2.0);
     if (near.i >= 0) {
-      const h = this.forest.hs[near.i];
-      const r = 0.35 + Math.min(0.7, h * 0.035);
-      if (near.d < r && this.pos.y < hf.height(this.pos.x, this.pos.z) + h * 0.8) {
-        const dx = this.pos.x - this.forest.xs[near.i], dz = this.pos.z - this.forest.zs[near.i];
+      const f = this.forest;
+      const h = f.oh(near.i), r = near.rad;
+      if (near.d < r && this.pos.y < hf.height(this.pos.x, this.pos.z) + h * 0.9) {
+        const ox = f.ox(near.i), oz = f.oz(near.i);
+        const dx = this.pos.x - ox, dz = this.pos.z - oz;
         const l = Math.hypot(dx, dz) || 1;
-        this.pos.x = this.forest.xs[near.i] + dx / l * r;
-        this.pos.z = this.forest.zs[near.i] + dz / l * r;
+        this.pos.x = ox + dx / l * r;
+        this.pos.z = oz + dz / l * r;
         const sp = this.speed;
         const vn = (this.vel.x * dx + this.vel.z * dz) / l;
         if (vn < 0) { this.vel.x -= vn * dx / l * 1.3; this.vel.z -= vn * dz / l * 1.3; }
-        if (!crashed && sp > 6) this.crash('Sapin !');
-        this.vel.multiplyScalar(0.6);
+        if (!crashed && sp > 6 && vn < -3) this.crash(near.i < f.count ? 'Sapin !' : 'Obstacle !');
+        this.vel.multiplyScalar(0.7);
       }
     }
     // bâtiments

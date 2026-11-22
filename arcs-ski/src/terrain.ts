@@ -97,6 +97,8 @@ float gPiste; float gRock; float gForest;`)
   col *= mix(vec3(0.82, 0.88, 1.0), vec3(1.0), smoothstep(0.55, 1.0, vAO)) * min(vAO + 0.08, 1.06);
   diffuseColor.rgb = col;
 }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+reflectedLight.indirectDiffuse *= vec3(0.84, 0.93, 1.14);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(0.9, 0.7, gPiste);
 roughnessFactor = mix(roughnessFactor, 0.95, gRock);`)
@@ -111,6 +113,15 @@ roughnessFactor = mix(roughnessFactor, 0.95, gRock);`)
   float hx = fbm((p + vec2(e, 0.0)) * 0.7) * s + vnoise((p + vec2(e, 0.0)) * 4.0) * 0.08;
   float hz = fbm((p + vec2(0.0, e)) * 0.7) * s + vnoise((p + vec2(0.0, e)) * 4.0) * 0.08;
   vec3 pert = vec3(h0 - hx, 0.0, h0 - hz) / e * 0.6 * amp;
+  // ondulations de vent sur la poudreuse, visibles plus loin
+  float amp2 = (1.0 - smoothstep(60.0, 600.0, d)) * (1.0 - gPiste) * (1.0 - gRock);
+  vec2 wd = normalize(vec2(0.8, 0.6));
+  float ph = dot(p, wd) * 0.9 + fbm(p * 0.05) * 9.0;
+  float rip = cos(ph) * (0.5 + 0.5 * fbm(p * 0.03 + 7.0));
+  pert.xz += wd * rip * 0.22 * amp2;
+  // grosses bosses de poudreuse (mi-distance)
+  float b0 = fbm(p * 0.09), bx = fbm((p + vec2(1.5, 0.0)) * 0.09), bz = fbm((p + vec2(0.0, 1.5)) * 0.09);
+  pert += vec3(b0 - bx, 0.0, b0 - bz) / 1.5 * 2.2 * amp2;
   normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
 }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>

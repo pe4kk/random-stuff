@@ -6,6 +6,14 @@ import { DIFF_COLOR, DIFF_LABEL, LiftRuntime, makeBuildings, makeLifts, makePist
 import { Skier } from './skier';
 import { Tracks, Spray, makeSky } from './effects';
 import { Input } from './input';
+import { Crowd, buildRoutes } from './npc';
+import { makeSnowGuns, makeRocks, makeFunicular } from './props';
+import { PisteMap } from './map';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SkiAudio } from './audio';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -73,7 +81,7 @@ function build(data: GameData) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.62;
+  renderer.toneMappingExposure = 0.56;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('game').appendChild(renderer.domElement);
@@ -95,7 +103,8 @@ function build(data: GameData) {
   scene.add(sun, sun.target);
   const hemi = new THREE.HemisphereLight(0xb4cdf8, 0x9aa8bf, 1.0);
   scene.add(hemi);
-  scene.add(makeSky(sunDir));
+  const sky = makeSky(sunDir);
+  scene.add(sky);
 
   // ------------------------------------------------------- terrain
   const maskTex = new THREE.Texture(data.maskImage);
@@ -117,16 +126,25 @@ function build(data: GameData) {
   const forest = new Forest(data.trees, hf, mask);
   scene.add(forest.group);
   scene.add(makeBuildings(data.features.buildings, hf));
-  const lifts = makeLifts(data.features.lifts, hf, scene);
+  const lifts = makeLifts(data.features.lifts, hf, scene, mask, forest);
   scene.add(makePistePoles(data.features.pistes, hf, mask));
   scene.add(makeSigns(data.features.pistes, hf));
+  scene.add(makeSnowGuns(data.features.pistes, hf, mask, forest));
+  scene.add(makeRocks(hf, mask, forest));
+  const funi = makeFunicular(data.features.funiculars ?? [], hf);
+  if (funi) scene.add(funi.group);
   const pisteIdx = new PisteIndex(data.features.pistes);
 
   // ------------------------------------------------------- skieur
   const skier = new Skier(hf, mask, forest);
   scene.add(skier.model.root);
-  const tracks = new Tracks(); scene.add(tracks.mesh);
+  const tracks = new Tracks(10000, 0.5); scene.add(tracks.mesh);
   const spray = new Spray(); scene.add(spray.points);
+  // autres skieurs + traces déjà présentes sur les pistes
+  const routes = buildRoutes(data.features.pistes, lifts, hf);
+  const oldTracks = new Tracks(40000, 0.9); scene.add(oldTracks.mesh);
+  Crowd.pretrace(routes, hf, mask, forest, oldTracks, Math.min(60, routes.length * 3));
+  const crowd = new Crowd(routes, hf, mask, forest, scene, 22, oldTracks);
 
   // points de téléportation : sommets des remontées
   const mb = lifts.find(l => l.lift.name === 'Mont-Blanc');
@@ -147,7 +165,7 @@ function build(data: GameData) {
         }
       }
       skier.place(bp[0], bp[1], Math.atan2(bdir.x, bdir.z));
-      tracks.reset(); core.warm(skier.pos); camSnap = true;
+      tracks.reset(); core.warm(skier.pos); camSnap = true; chronoReset();
       return;
     } else {
       // direction de plus grande pente
@@ -168,6 +186,8 @@ function build(data: GameData) {
   // ------------------------------------------------------- caméra
   let camMode = 0;
   let camSnap = true;
+  let camZoom = 1;
+  renderer.domElement.addEventListener('wheel', (e) => { e.preventDefault(); camZoom = Math.min(2.5, Math.max(0.55, camZoom * (e.deltaY > 0 ? 1.1 : 1 / 1.1))); }, { passive: false });
   const camPos = new THREE.Vector3();
   const camLook = new THREE.Vector3();
   const camDir = new THREE.Vector3(0, 0, 1);
@@ -185,10 +205,24 @@ function build(data: GameData) {
       const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.55, 0.2));
       target = h; look = h.clone().addScaledVector(head, 10).add(new THREE.Vector3(0, -1.5, 0));
     } else {
-      const dist = camMode === 0 ? 5.2 + sp * 0.06 : 14;
-      const height = camMode === 0 ? 2.1 : 6;
+      let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
+      let height = (camMode === 0 ? 3.6 : 8) * camZoom;
+      // ne pas se retrouver dans un sapin : on rapproche la caméra
+      const full = dist;
+      for (let t = 2; t <= full; t += 1) {
+        const qx = p.x - camDir.x * t, qz = p.z - camDir.z * t;
+        const qy = p.y + height * (t / full);
+        const nb = forest.nearest(qx, qz, 4);
+        if (nb.i >= 0 && nb.i < forest.count) {
+          const h = forest.oh(nb.i);
+          const base = hf.height(forest.ox(nb.i), forest.oz(nb.i));
+          const rel = (qy - base) / h;
+          const crown = h * 0.24 * Math.max(0, 1 - rel) + 0.4;
+          if (rel < 1 && nb.d < crown) { dist = Math.max(2.5, t - 1); height = height * (dist / full) + 0.6; break; }
+        }
+      }
       target = p.clone().addScaledVector(camDir, -dist); target.y = p.y + height;
-      look = p.clone().addScaledVector(camDir, 4); look.y += camMode === 0 ? 0.6 : 0;
+      look = p.clone().addScaledVector(camDir, 6); look.y += camMode === 0 ? 0.9 : 0.5;
     }
     const k = camSnap ? 1 : Math.min(1, dt * (camMode === 2 ? 30 : 6));
     camPos.lerp(target, k); camLook.lerp(look, camSnap ? 1 : Math.min(1, dt * 10));
@@ -226,9 +260,29 @@ function build(data: GameData) {
     tpList.appendChild(b);
   });
   let tpOpen = false, paused = false;
-  function toggleTp(v = !tpOpen) { tpOpen = v; tpMenu.classList.toggle('show', v); }
-  function togglePause(v = !paused) { paused = v; pauseEl.classList.toggle('show', v); }
+  function toggleTp(v = !tpOpen) { tpOpen = v; tpMenu.classList.toggle('show', v); if (v) { togglePause(false); map.toggle(false); } }
+  function togglePause(v = !paused) { paused = v; pauseEl.classList.toggle('show', v); if (v) refreshPause(); }
+  function toggleMap(v = !map.open) { map.toggle(v); if (v) { togglePause(false); toggleTp(false); } }
+  function restart() {
+    togglePause(false); toggleMap(false); toggleTp(false);
+    if (mb) spawnAtLift(mb);
+    tracks.clear();
+    message('Nouvelle descente : piste Mont-Blanc', 2);
+  }
+  function refreshPause() {
+    $('btn-quality').textContent = `Qualité graphique : ${QUALITY[quality].name}`;
+    $('btn-sound').textContent = `Son : ${audio.muted ? 'coupé' : 'activé'}`;
+  }
   $('btn-resume').onclick = () => togglePause(false);
+  $('btn-restart').onclick = () => restart();
+  $('btn-map').onclick = () => toggleMap(true);
+  $('btn-tp').onclick = () => toggleTp(true);
+  $('btn-help').onclick = () => { togglePause(false); help.classList.add('show'); };
+  $('btn-quality').onclick = () => { autoQ = false; applyQuality((quality + 1) % 3); refreshPause(); };
+  $('btn-sound').onclick = () => { audio.setMuted(!audio.muted); refreshPause(); };
+  $('map-close').onclick = () => toggleMap(false);
+  help.addEventListener('click', () => help.classList.remove('show'));
+  const map = new PisteMap(data.features, hf, mask, lifts, (l) => { spawnAtLift(l); toggleMap(false); message(`Sommet : ${l.lift.name}`, 2); });
 
   // mini-carte
   const mini = $('minimap') as HTMLCanvasElement;
@@ -274,6 +328,7 @@ function build(data: GameData) {
   let best = NaN;
   try { best = Number(localStorage.getItem('arcs-mb-best') ?? 'NaN'); } catch { /* stockage indisponible */ }
   let chronoRun = false, chronoT = 0, armed = true;
+  function chronoReset() { chronoRun = false; chronoT = 0; armed = true; }
   const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
   function updateChrono(dt: number) {
     if (!mb) return;
@@ -308,12 +363,37 @@ function build(data: GameData) {
     const Q = QUALITY[q];
     renderer.setPixelRatio(Q.ratio);
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (composer) { composer.setPixelRatio(Q.ratio); composer.setSize(window.innerWidth, window.innerHeight); }
     sun.shadow.mapSize.set(Q.shadow, Q.shadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); (sun.shadow as any).map = null; }
     (coreMat as any).snowUniforms.uTreeFade.value.set(Q.lo * 0.75, Q.lo * 1.05);
     try { localStorage.setItem('arcs-quality', String(q)); } catch { /* ignore */ }
     if (announce) message(`Qualité graphique : ${Q.name}`, 1.6);
   }
+  // post-traitement : léger halo lumineux, vignettage et étalonnage
+  let composer: EffectComposer | null = null;
+  try {
+    const rt = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 });
+    composer = new EffectComposer(renderer, rt);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.12, 0.4, 2.2));
+    composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        void main(){
+          vec4 c = texture2D(tDiffuse, vUv);
+          vec2 d = vUv - 0.5;
+          float v = 1.0 - dot(d, d) * 0.55;
+          vec3 col = c.rgb * v;
+          // contraste doux et légère chaleur dans les hautes lumières
+          col = mix(col, col * col * (3.0 - 2.0 * col), 0.18);
+          col *= vec3(1.01, 1.0, 0.985);
+          gl_FragColor = vec4(col, c.a);
+        }`,
+    }));
+  } catch (e) { console.warn('post-traitement indisponible', e); composer = null; }
   applyQuality(quality, false);
   const fpsEl = $('fps');
   let fpsAcc = 0, fpsN = 0, fpsShown = false, autoT = 0, autoFrames = 0;
@@ -335,12 +415,19 @@ function build(data: GameData) {
     input.poll();
 
     // commandes ponctuelles
-    if (input.was('Escape', 9)) { if (tpOpen) toggleTp(false); else togglePause(); }
+    if (input.was('Escape', 9)) {
+      if (tpOpen) toggleTp(false);
+      else if (map.open) toggleMap(false);
+      else if (help.classList.contains('show')) help.classList.remove('show');
+      else togglePause();
+    }
     if (input.was('KeyT', 3)) toggleTp();
+    if (input.was('KeyM', 2)) toggleMap();
+    if (paused && input.was('Enter')) restart();
     if (input.was('KeyR', 8)) { if (mb) spawnAtLift(mb); message('Retour au sommet du télésiège Mont-Blanc'); }
     if (input.was('KeyC', 1)) { camMode = (camMode + 1) % 3; camSnap = true; }
     if (input.was('KeyH')) help.classList.toggle('show');
-    if (input.was('KeyM')) audio.setMuted(!audio.muted);
+    if (input.was('KeyN')) { audio.setMuted(!audio.muted); message(audio.muted ? 'Son coupé' : 'Son activé', 1.2); }
     if (input.was('KeyG')) { autoQ = false; applyQuality((quality + 1) % 3); }
     if (input.was('KeyF')) { fpsShown = !fpsShown; fpsEl.style.display = fpsShown ? 'block' : 'none'; }
     fpsAcc += dt; fpsN++;
@@ -357,7 +444,8 @@ function build(data: GameData) {
     }
     if (tpOpen) for (let i = 0; i < Math.min(9, tpLifts.length); i++) if (input.was('Digit' + (i + 1)) || input.was('Numpad' + (i + 1))) { spawnAtLift(tpLifts[i]); toggleTp(false); }
 
-    if (!paused && !tpOpen) {
+    const frozen = paused || tpOpen || map.open;
+    if (!frozen) {
       elapsed += dt;
       acc += dt;
       const inp = input.ski();
@@ -379,7 +467,7 @@ function build(data: GameData) {
       skiR.set(0.13, 0, -0.3).applyMatrix4(root.matrixWorld);
       skiL.y = hf.height(skiL.x, skiL.z); skiR.y = hf.height(skiR.x, skiR.z);
       side.set(1, 0, 0).applyQuaternion(root.quaternion).setY(0).normalize();
-      tracks.add([skiL, skiR], side, 0.1 + skier.skid * 0.25, (1 - skier.onPiste * 0.5) * (0.5 + skier.skid * 0.5));
+      tracks.add([skiL, skiR], side, 0.13 + skier.skid * 0.3, (1 - skier.onPiste * 0.25) * (0.8 + skier.skid * 0.2));
       const sp = skier.speed;
       const intensity = skier.skid * Math.min(1, sp / 5) + skier.carve * 0.35 + (1 - skier.onPiste) * Math.min(1, sp / 12) * 0.5;
       const n = Math.floor(intensity * 7 * (dt * 60) + Math.random());
@@ -392,7 +480,10 @@ function build(data: GameData) {
     }
     spray.update(dt);
 
-    for (const l of lifts) l.update(elapsed);
+    for (const l of lifts) l.update(elapsed, camera.position);
+    if (funi) funi.update(elapsed);
+    if (!frozen) crowd.update(dt, camera.position, Math.max(1, Math.round(dt / (1 / 60))), Math.min(dt, 0.05) / Math.max(1, Math.round(dt / (1 / 60))));
+    (sky.material as THREE.ShaderMaterial).uniforms.uTime.value = elapsed;
     updateCamera(dt);
     core.update(camera.position);
     forest.update(camera.position, QUALITY[quality].lo, QUALITY[quality].hi);
@@ -420,9 +511,14 @@ function build(data: GameData) {
     }
     if (msgT > 0) { msgT -= dt; if (msgT <= 0) hudMsg.classList.remove('show'); }
     drawMini();
+    if (map.open) {
+      map.player = { x: skier.pos.x, z: skier.pos.z, yaw: skier.yaw };
+      map.others = crowd.skiers.map(e => ({ x: e.sk.pos.x, z: e.sk.pos.z }));
+      if ((fpsN & 7) === 0) map.draw();
+    }
     audio.update(skier.speed, skier.carve, skier.skid, skier.grounded, skier.crashT > 0);
 
-    renderer.render(scene, camera);
+    if (composer && quality < 2) composer.render(); else renderer.render(scene, camera);
     input.endFrame();
   }
 
@@ -430,6 +526,7 @@ function build(data: GameData) {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (composer) composer.setSize(window.innerWidth, window.innerHeight);
   });
 
   // écran titre
@@ -449,7 +546,7 @@ function build(data: GameData) {
   };
   // test automatique : ?auto=1 lance directement
   if (new URLSearchParams(location.search).has('auto')) go.click();
-  (window as any).__game = { skier, camera, hf, lifts, setCam: (m: number) => { camMode = m; camSnap = true; },
+  (window as any).__game = { skier, camera, hf, lifts, routes, crowd, toggleMap, togglePause, setCam: (m: number) => { camMode = m; camSnap = true; },
     debugCam: (p: number[] | null, l?: number[]) => { debugCam = p ? { p: new THREE.Vector3(...p), l: new THREE.Vector3(...l!) } : null; },
     place: (x: number, z: number, yaw: number) => { skier.place(x, z, yaw); core.warm(skier.pos); camSnap = true; } };
   frame();

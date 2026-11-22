@@ -6,7 +6,12 @@ export interface Meta {
   cx: number; cy: number; coreN: number; coreHalf: number; hOff: number; hScale: number;
   midN: number; midHalf: number; farN: number; farHalf: number; nTrees: number;
 }
-export interface Features { pistes: Piste[]; lifts: Lift[]; buildings: Building[]; meta: Meta }
+export interface Place { name: string; kind: string; p: [number, number] }
+export interface Features {
+  pistes: Piste[]; lifts: Lift[]; buildings: Building[]; meta: Meta;
+  funiculars: { name: string; pts: [number, number][] }[];
+  places: Place[]; pois: Place[]; roads: { kind: string; pts: [number, number][] }[];
+}
 
 export interface GameData {
   features: Features;

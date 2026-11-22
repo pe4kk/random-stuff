@@ -62,14 +62,29 @@ canopy = np.clip(mns - mnt, 0, 45)
 
 # ---------------------------------------------------------------- features OSM
 feats = json.load(open(os.path.join(RAW, 'features.json')))
-pistes, lifts, buildings = [], [], []
+pistes, lifts, buildings, funiculars, places, pois, roads = [], [], [], [], [], [], []
 for f in feats:
     t = f['tags']
     pts = [to_local(*c) for c in f['coords']]
     inside = any(abs(p[0]) < CORE_HALF + 200 and abs(p[1]) < CORE_HALF + 200 for p in pts)
+    if f.get('node'):
+        p0 = pts[0]
+        if abs(p0[0]) > CORE_HALF + 2500 or abs(p0[1]) > CORE_HALF + 2500:
+            continue
+        if 'place' in t and t.get('name'):
+            places.append({'name': t['name'], 'kind': t['place'], 'p': p0})
+        elif t.get('name') or t.get('man_made') == 'snow_cannon' or t.get('tourism') == 'viewpoint':
+            kind = t.get('amenity') or t.get('tourism') or t.get('man_made')
+            if abs(p0[0]) < CORE_HALF and abs(p0[1]) < CORE_HALF:
+                pois.append({'name': t.get('name', ''), 'kind': kind, 'p': p0})
+        continue
     if not inside:
         continue
-    if t.get('piste:type') == 'downhill':
+    if t.get('railway') == 'funicular':
+        funiculars.append({'name': t.get('name', ''), 'pts': pts})
+    elif t.get('highway') in ('primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'service') and t.get('tunnel') != 'yes' and 'piste:type' not in t:
+        roads.append({'kind': t['highway'], 'pts': pts})
+    elif t.get('piste:type') == 'downhill':
         pistes.append({'id': f['id'], 'name': t.get('name') or t.get('piste:name') or '',
                        'diff': t.get('piste:difficulty', 'easy'),
                        'area': t.get('area') == 'yes', 'pts': pts})
@@ -117,7 +132,12 @@ for b in buildings:
     px = [to_px(*q) for q in b['pts']]
     if len(px) >= 3:
         db.polygon(px, fill=255)
-bmask = np.asarray(bimg) > 0
+for fu in funiculars:
+    px = [to_px(*q) for q in fu['pts']]
+    db.line(px, fill=128, width=int(9 / CELL))
+fmask = np.asarray(bimg) == 128
+bimg_arr = np.asarray(bimg).copy(); bimg_arr[fmask] = 0
+bmask = bimg_arr > 0
 bmask_d = ndimage.binary_dilation(bmask, iterations=3)
 
 # hauteur des bâtiments = médiane MNS-MNT dans l'emprise
@@ -161,8 +181,10 @@ snow = ndimage.gaussian_filter(mnt, 1.2)
 groom = ndimage.gaussian_filter(mnt, 5.0)
 h = snow * (1 - piste) + groom * piste
 h += 0.6  # épaisseur de neige
+h -= piste * 0.4  # piste damée en léger contrebas : bord visible
 # sous les bâtiments : terrain d'origine (évite les bâtiments flottants)
-h = np.where(bmask_d, mnt, h)
+wb = np.clip(ndimage.gaussian_filter(bmask_d.astype(np.float64), 2.5) * 1.5, 0, 1)
+h = h * (1 - wb) + (ndimage.gaussian_filter(mnt, 1.5) + 0.3) * wb
 
 core_u16 = np.clip((h - H_OFF) * H_SCALE, 0, 65535).astype('<u2')
 save_u16_png(core_u16, os.path.join(OUT, 'core_h.png'))
@@ -170,7 +192,7 @@ save_u16_png(core_u16, os.path.join(OUT, 'core_h.png'))
 # --------------------------------------------------------------------- arbres
 can_s = ndimage.gaussian_filter(canopy, 0.8)
 mx = ndimage.maximum_filter(can_s, size=3)
-tops = (can_s == mx) & (can_s > 3.0) & (~bmask_d) & (piste < 0.35)
+tops = (can_s == mx) & (can_s > 3.0) & (~bmask_d) & (piste < 0.35) & (~ndimage.binary_dilation(fmask, iterations=1))
 rows, cols = np.nonzero(tops)
 rng = np.random.default_rng(42)
 tx = (cols + 0.5) * CELL - CORE_HALF + rng.uniform(-0.8, 0.8, cols.size)
@@ -214,7 +236,7 @@ if os.path.exists(os.path.join(RAW, 'mid_ortho.jpg')):
     Image.fromarray(np.clip(fm * 255, 0, 255).astype(np.uint8), 'L').save(os.path.join(OUT, 'mid_forest.png'), optimize=True)
 
 # ------------------------------------------------------------------- features
-json.dump({'pistes': pistes, 'lifts': lifts, 'buildings': bout,
+json.dump({'pistes': pistes, 'lifts': lifts, 'buildings': bout, 'funiculars': funiculars, 'places': places, 'pois': pois, 'roads': roads,
            'meta': {'cx': CX, 'cy': CY, 'coreN': CORE_N, 'coreHalf': CORE_HALF, 'hOff': H_OFF, 'hScale': H_SCALE,
                     'midN': 1024, 'midHalf': 8192, 'farN': 1024, 'farHalf': 40960, 'nTrees': n_trees}},
           open(os.path.join(OUT, 'features.json'), 'w'), separators=(',', ':'))

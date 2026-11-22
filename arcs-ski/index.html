@@ -49,8 +49,22 @@
   #load-progress { width: min(360px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }
   #load-bar { height: 100%; width: 0; background: #fff; transition: width .2s; }
   #load-label { margin-top: 12px; font-size: 14px; opacity: .8; min-height: 20px; }
-  #btn-start, #btn-resume { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 14px 28px; border-radius: 999px; border: 0; background: #fff; color: var(--ink); font: 800 18px system-ui, sans-serif; cursor: pointer; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
-  #btn-resume { display: inline-flex; }
+  .menu { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .menu h2, .menu p { margin-bottom: 4px; }
+  .menu button { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: #fff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+  .menu button:hover, .menu button:focus-visible { background: rgba(31,111,224,.4); outline: none; }
+  .menu button.primary { background: #fff; color: var(--ink); }
+  .menu button.primary kbd { color: var(--ink); border-color: rgba(0,0,0,.2); background: rgba(0,0,0,.06); }
+  .menu .row { display: flex; gap: 8px; }
+  .menu .row button { justify-content: center; font-size: 13px; }
+  #map { background: #0d1b2e; backdrop-filter: none; align-items: stretch; justify-content: stretch; }
+  #map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  .map-head { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; background: rgba(10,18,32,.78); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 14px; pointer-events: none; }
+  .map-head .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; opacity: .9; }
+  .map-head .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid #fff; margin-left: 6px; }
+  .map-head .legend span { opacity: .75; }
+  #map-close { pointer-events: auto; padding: 8px 14px; border-radius: 999px; border: 0; background: #fff; color: var(--ink); font: 700 14px system-ui, sans-serif; cursor: pointer; }
+  #btn-start { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 14px 28px; border-radius: 999px; border: 0; background: #fff; color: var(--ink); font: 800 18px system-ui, sans-serif; cursor: pointer; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
   #loading .ctl-mini { margin-top: 26px; font-size: 13px; opacity: .85; line-height: 1.9; }
   #loading .credit { position: absolute; bottom: 12px; font-size: 11px; opacity: .6; }
   @media (max-width: 700px) { #keys { display: none; } #minimap { width: 130px; height: 130px; } #speed { font-size: 44px; } }
@@ -66,7 +80,7 @@
 <canvas class="hud" id="minimap" width="400" height="400"></canvas>
 <div class="hud" id="msg"></div>
 <div class="hud" id="fps"></div>
-<div class="hud" id="keys"><kbd>←</kbd><kbd>→</kbd> tourner · <kbd>↑</kbd> schuss · <kbd>↓</kbd> freiner · <kbd>Espace</kbd> saut<br><kbd>R</kbd> retour en haut · <kbd>T</kbd> téléporter · <kbd>C</kbd> caméra · <kbd>H</kbd> aide</div>
+<div class="hud" id="keys"><kbd>←</kbd><kbd>→</kbd> tourner · <kbd>↑</kbd> schuss · <kbd>↓</kbd> freiner · <kbd>Espace</kbd> saut<br><kbd>R</kbd> retour en haut · <kbd>M</kbd> plan · <kbd>T</kbd> téléporter · <kbd>C</kbd> caméra · <kbd>Échap</kbd> menu</div>
 
 <div class="panel" id="teleport"><div class="card">
   <h2>Se téléporter</h2>
@@ -84,18 +98,38 @@
     <tr><td>Saut (maintenir pour charger)</td><td>Espace · A</td></tr>
     <tr><td>Retour au sommet du Mont-Blanc</td><td>R · Select</td></tr>
     <tr><td>Téléportation</td><td>T · Y</td></tr>
+    <tr><td>Plan des pistes</td><td>M · X</td></tr>
     <tr><td>Changer de caméra</td><td>C · B</td></tr>
-    <tr><td>Couper le son</td><td>M</td></tr>
+    <tr><td>Rapprocher / éloigner la caméra</td><td>molette</td></tr>
+    <tr><td>Couper le son</td><td>N</td></tr>
     <tr><td>Qualité graphique (haute / moyenne / basse)</td><td>G</td></tr>
     <tr><td>Afficher les images par seconde</td><td>F</td></tr>
-    <tr><td>Pause</td><td>Échap · Start</td></tr>
+    <tr><td>Menu (recommencer, plan, réglages)</td><td>Échap · Start</td></tr>
   </table>
 </div></div>
 
-<div class="panel" id="pause"><div class="card" style="text-align:center">
-  <h2>Pause</h2><p>Appuie sur Échap pour reprendre.</p>
-  <button id="btn-resume">Reprendre</button>
+<div class="panel" id="pause"><div class="card menu">
+  <h2>Pause</h2>
+  <p>Piste Mont-Blanc · Arc 1600</p>
+  <button id="btn-resume" class="primary">Reprendre <kbd>Échap</kbd></button>
+  <button id="btn-restart">Recommencer la descente <kbd>Entrée</kbd></button>
+  <button id="btn-map">Plan des pistes <kbd>M</kbd></button>
+  <button id="btn-tp">Se téléporter <kbd>T</kbd></button>
+  <div class="row">
+    <button id="btn-quality">Qualité graphique</button>
+    <button id="btn-sound">Son</button>
+  </div>
+  <button id="btn-help">Commandes <kbd>H</kbd></button>
 </div></div>
+
+<div class="panel" id="map">
+  <canvas id="map-canvas"></canvas>
+  <div class="map-head">
+    <div><strong>Plan des pistes</strong> · secteur Arc 1600</div>
+    <div class="legend"><i style="background:#22a34a"></i>verte <i style="background:#1f6fe0"></i>bleue <i style="background:#d8262c"></i>rouge <i style="background:#111"></i>noire <span>· clic sur un sommet ○ pour s'y téléporter · molette pour zoomer</span></div>
+    <button id="map-close">Fermer <kbd>M</kbd></button>
+  </div>
+</div>
 
 <div id="loading">
   <h1>Les Arcs</h1>
@@ -103,7 +137,7 @@
   <div id="load-progress"><div id="load-bar"></div></div>
   <div id="load-label">Chargement…</div>
   <button id="btn-start">Skier ▸</button>
-  <div class="ctl-mini"><kbd>←</kbd> <kbd>→</kbd> tourner &nbsp; <kbd>↑</kbd> schuss &nbsp; <kbd>↓</kbd> freiner &nbsp; <kbd>Espace</kbd> saut &nbsp; <kbd>R</kbd> remonter &nbsp; <kbd>T</kbd> téléporter</div>
+  <div class="ctl-mini"><kbd>←</kbd> <kbd>→</kbd> tourner &nbsp; <kbd>↑</kbd> schuss &nbsp; <kbd>↓</kbd> freiner &nbsp; <kbd>Espace</kbd> saut &nbsp; <kbd>R</kbd> remonter &nbsp; <kbd>M</kbd> plan &nbsp; <kbd>Échap</kbd> menu</div>
   <div class="credit">Relief et photos : © IGN (RGE ALTI®, BD ORTHO®) · Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL)</div>
 </div>
 <script type="module" src="/src/main.ts"></script>

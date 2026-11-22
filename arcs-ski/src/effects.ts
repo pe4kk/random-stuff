@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // ------------------------------------------------------------------ ciel
 export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uSun: { value: sunDir } },
+    uniforms: { uSun: { value: sunDir }, uTime: { value: 0 } },
     vertexShader: /* glsl */ `
       #include <common>
       #include <logdepthbuf_pars_vertex>
@@ -17,17 +17,30 @@ export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
     fragmentShader: /* glsl */ `
       #include <common>
       #include <logdepthbuf_pars_fragment>
-      uniform vec3 uSun;
+      uniform vec3 uSun; uniform float uTime;
       varying vec3 vDir;
+      float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+      float vn(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+        return mix(mix(h12(i), h12(i+vec2(1,0)), u.x), mix(h12(i+vec2(0,1)), h12(i+vec2(1,1)), u.x), u.y); }
+      float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i=0;i<5;i++){ s += a*vn(p); p = p*2.1 + 13.7; a *= 0.5; } return s; }
       void main(){
         #include <logdepthbuf_fragment>
         vec3 d = normalize(vDir);
         float h = max(d.y, -0.05);
-        vec3 zenith = vec3(0.13, 0.32, 0.72);
-        vec3 horizon = vec3(0.66, 0.78, 0.92);
-        vec3 col = mix(horizon, zenith, pow(smoothstep(-0.02, 0.6, h), 0.65));
+        vec3 zenith = vec3(0.12, 0.30, 0.70);
+        vec3 horizon = vec3(0.68, 0.79, 0.92);
+        vec3 col = mix(horizon, zenith, pow(smoothstep(-0.02, 0.6, h), 0.6));
         float s = max(dot(d, normalize(uSun)), 0.0);
-        col += vec3(1.0, 0.85, 0.6) * pow(s, 8.0) * 0.25;
+        col += vec3(1.0, 0.85, 0.6) * pow(s, 8.0) * 0.22;
+        // nuages : couche plane à haute altitude
+        if (d.y > 0.02) {
+          vec2 uv = d.xz / (d.y + 0.08) * 1.4 + vec2(uTime * 0.004, uTime * 0.0015);
+          float c = fbm(uv * 1.2);
+          float cover = smoothstep(0.52, 0.78, c + 0.06 * fbm(uv * 6.0));
+          float lit = 0.75 + 0.25 * pow(s, 3.0) + 0.15 * fbm(uv * 3.0 + 4.0);
+          vec3 cc = mix(vec3(0.82, 0.86, 0.92), vec3(1.0, 0.98, 0.95), lit - 0.5);
+          col = mix(col, cc, cover * smoothstep(0.02, 0.25, d.y) * 0.9);
+        }
         col += vec3(1.0, 0.95, 0.85) * pow(s, 400.0) * 6.0;
         col += vec3(1.0, 0.98, 0.9) * smoothstep(0.9995, 0.99975, s) * 20.0;
         gl_FragColor = vec4(col, 1.0);
@@ -45,64 +58,82 @@ export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
 }
 
 // --------------------------------------------------------- traces de skis
+/** Sillons dans la neige : bande ombrée d'un côté, bourrelet clair de l'autre. */
 export class Tracks {
   mesh: THREE.Mesh;
   private pos: Float32Array;
   private alpha: Float32Array;
   private i = 0;
-  private readonly N = 3000;            // segments par ski
-  private last: (THREE.Vector3 | null)[] = [null, null];
+  private last: (THREE.Vector3 | null)[] = [];
   private geo: THREE.BufferGeometry;
 
-  constructor() {
-    const n = this.N * 2;
-    this.pos = new Float32Array(n * 4 * 3);
-    this.alpha = new Float32Array(n * 4);
-    const idx = new Uint32Array(n * 6);
-    for (let k = 0; k < n; k++) {
+  constructor(private N = 12000, private minStep = 0.6) {
+    this.pos = new Float32Array(N * 4 * 3);
+    this.alpha = new Float32Array(N * 4);
+    const across = new Float32Array(N * 4);
+    const idx = new Uint32Array(N * 6);
+    for (let k = 0; k < N; k++) {
       const b = k * 4;
       idx.set([b, b + 1, b + 2, b + 2, b + 1, b + 3], k * 6);
+      across.set([-1, 1, -1, 1], b);
     }
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geo.setAttribute('across', new THREE.BufferAttribute(across, 1));
     this.geo.setIndex(new THREE.BufferAttribute(idx, 1));
     const mat = new THREE.ShaderMaterial({
       vertexShader: `#include <common>
         #include <logdepthbuf_pars_vertex>
-        attribute float alpha; varying float vA;
-        void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        attribute float alpha; attribute float across; varying float vA; varying float vX; varying float vD;
+        void main(){ vA = alpha; vX = across; vec4 mv = modelViewMatrix * vec4(position,1.0); vD = -mv.z; gl_Position = projectionMatrix * mv;
         #include <logdepthbuf_vertex>
         }`,
       fragmentShader: `#include <common>
         #include <logdepthbuf_pars_fragment>
-        varying float vA;
+        varying float vA; varying float vX; varying float vD;
         void main(){
-        #include <logdepthbuf_fragment>
-        gl_FragColor = vec4(0.55, 0.62, 0.75, vA * 0.45); }`,
+          #include <logdepthbuf_fragment>
+          float x = vX;
+          // creux sombre au centre-gauche, bord clair à droite
+          float groove = 1.0 - smoothstep(0.0, 0.85, abs(x + 0.1));
+          float rim = smoothstep(0.5, 0.95, x) * (1.0 - smoothstep(0.95, 1.0, x));
+          vec3 dark = vec3(0.50, 0.58, 0.72);
+          vec3 light = vec3(1.0);
+          float a = (groove * 0.75 + rim * 0.35) * vA * (1.0 - smoothstep(120.0, 400.0, vD));
+          vec3 c = mix(dark, light, rim / max(groove + rim, 1e-3));
+          gl_FragColor = vec4(c, a);
+        }`,
       transparent: true, depthWrite: false,
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     });
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1;
   }
 
-  reset() { this.last = [null, null]; }
+  reset() { this.last = []; }
 
-  /** ajoute un point pour chaque ski (gauche/droite) */
-  add(points: THREE.Vector3[], side: THREE.Vector3, width: number, strength: number) {
-    for (let s = 0; s < 2; s++) {
+  clear() {
+    this.alpha.fill(0); this.i = 0; this.last = [];
+    (this.geo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** ajoute un point pour chaque trace (deux skis, ou plus) ; key permet plusieurs skieurs */
+  add(points: THREE.Vector3[], side: THREE.Vector3, width: number, strength: number, key = 0, update = true) {
+    for (let s = 0; s < points.length; s++) {
+      const slot = key * 2 + s;
       const p = points[s];
-      const prev = this.last[s];
-      if (!prev) { this.last[s] = p.clone(); continue; }
-      if (prev.distanceToSquared(p) < 0.25) continue;
-      if (prev.distanceToSquared(p) > 25) { this.last[s] = p.clone(); continue; }
-      const k = (this.i % (this.N * 2));
+      const prev = this.last[slot];
+      if (!prev) { this.last[slot] = p.clone(); continue; }
+      const d2 = prev.distanceToSquared(p);
+      if (d2 < this.minStep * this.minStep) continue;
+      if (d2 > 36) { this.last[slot] = p.clone(); continue; }
+      const k = this.i % this.N;
       this.i++;
-      const b = k * 4 * 3;
+      const b = k * 12;
       const w = width * 0.5;
-      const lift = 0.03;
+      const lift = 0.025;
       const P = this.pos;
       P[b] = prev.x - side.x * w; P[b + 1] = prev.y + lift; P[b + 2] = prev.z - side.z * w;
       P[b + 3] = prev.x + side.x * w; P[b + 4] = prev.y + lift; P[b + 5] = prev.z + side.z * w;
@@ -111,6 +142,10 @@ export class Tracks {
       this.alpha.fill(strength, k * 4, k * 4 + 4);
       prev.copy(p);
     }
+    if (update) this.flush();
+  }
+
+  flush() {
     (this.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.geo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
   }
@@ -121,7 +156,7 @@ export class Spray {
   points: THREE.Points;
   private p: Float32Array; private v: Float32Array; private life: Float32Array; private size: Float32Array;
   private i = 0;
-  private readonly N = 2500;
+  private readonly N = 4000;
   constructor() {
     this.p = new Float32Array(this.N * 3); this.v = new Float32Array(this.N * 3);
     this.life = new Float32Array(this.N); this.size = new Float32Array(this.N);
@@ -135,7 +170,7 @@ export class Spray {
         #include <logdepthbuf_pars_vertex>
         attribute float life; attribute float size; varying float vL; uniform float uScale;
         void main(){ vL = life; vec4 mv = modelViewMatrix * vec4(position,1.0);
-          gl_PointSize = size * uScale / -mv.z * (0.6 + 0.6 * (1.0 - life));
+          gl_PointSize = size * uScale / -mv.z * (0.6 + 0.8 * (1.0 - life));
           gl_Position = projectionMatrix * mv;
           #include <logdepthbuf_vertex>
         }`,
@@ -145,7 +180,7 @@ export class Spray {
         void main(){
           #include <logdepthbuf_fragment>
           vec2 c = gl_PointCoord - 0.5; float d = length(c);
-          float a = smoothstep(0.5, 0.0, d) * clamp(vL, 0.0, 1.0) * 0.8;
+          float a = smoothstep(0.5, 0.0, d) * clamp(vL, 0.0, 1.0) * 0.85;
           if (a < 0.01) discard;
           gl_FragColor = vec4(vec3(0.97, 0.98, 1.0), a); }`,
       transparent: true, depthWrite: false,
@@ -162,8 +197,8 @@ export class Spray {
       this.v[i * 3] = vel.x * 0.5 + (Math.random() - 0.5) * spread;
       this.v[i * 3 + 1] = up * (0.5 + Math.random());
       this.v[i * 3 + 2] = vel.z * 0.5 + (Math.random() - 0.5) * spread;
-      this.life[i] = 0.7 + Math.random() * 0.5;
-      this.size[i] = 0.12 + Math.random() * 0.25;
+      this.life[i] = 0.7 + Math.random() * 0.6;
+      this.size[i] = 0.12 + Math.random() * 0.3;
     }
   }
   update(dt: number) {
