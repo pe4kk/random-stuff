@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Les Arcs Ski</title>
+<style>
+  :root {
+    --ink: #0f1a2b; --paper: #f6f8fb; --accent: #1f6fe0; --glass: rgba(10, 18, 32, 0.55); --line: rgba(255,255,255,0.18);
+    color-scheme: dark; /* jeu plein écran : ambiance unique, sombre */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1220; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #game canvas { display: block; outline: none; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  #speed { right: 28px; bottom: 22px; font-size: 64px; font-weight: 800; letter-spacing: -2px; font-variant-numeric: tabular-nums; }
+  #speed small { font-size: 18px; font-weight: 600; margin-left: 6px; letter-spacing: 0; opacity: .85; }
+  #alt { right: 30px; bottom: 96px; font-size: 18px; font-weight: 600; opacity: .9; font-variant-numeric: tabular-nums; }
+  #piste { left: 50%; top: 18px; transform: translateX(-50%); background: var(--glass); backdrop-filter: blur(8px); padding: 8px 16px 8px 12px; border-radius: 999px; font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); }
+  #piste i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 2px solid #fff; }
+  #piste span { font-weight: 500; opacity: .8; }
+  #chrono { right: 28px; top: 20px; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #minimap { left: 18px; bottom: 18px; width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 4px 20px rgba(0,0,0,.3); }
+  #msg { left: 50%; top: 32%; white-space: nowrap; transform: translate(-50%, -10px); font-size: 26px; font-weight: 800; opacity: 0; transition: opacity .25s, transform .25s; text-align: center; padding: 0 16px; }
+  #msg.show { opacity: 1; transform: translate(-50%, 0); }
+  #fps { left: 18px; top: 16px; font-size: 13px; font-weight: 700; display: none; background: var(--glass); padding: 4px 10px; border-radius: 8px; }
+  #keys { left: 230px; bottom: 22px; font-size: 13px; opacity: .85; line-height: 1.6; }
+  kbd { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3); border-radius: 5px; padding: 1px 6px; font-family: inherit; font-size: 12px; font-weight: 700; }
+
+  .panel { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(5,10,20,.45); backdrop-filter: blur(4px); z-index: 10; }
+  .panel.show { display: flex; }
+  .card { background: rgba(12,20,36,.92); border: 1px solid var(--line); border-radius: 16px; padding: 24px 26px; width: min(460px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; }
+  .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card p { margin: 0 0 16px; opacity: .75; font-size: 14px; }
+  #tp-list button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 12px; margin: 0 0 6px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: #fff; font: inherit; cursor: pointer; text-align: left; }
+  #tp-list button:hover { background: rgba(31,111,224,.35); }
+  #tp-list .k { width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,.15); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  #tp-list .n { flex: 1; font-weight: 600; }
+  #tp-list .a { opacity: .7; font-variant-numeric: tabular-nums; }
+  table.ctl { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.ctl td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  table.ctl td:last-child { text-align: right; opacity: .85; }
+
+  #loading { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 16px;
+    background: radial-gradient(1200px 600px at 50% 120%, #9fc2ea 0%, #3d6aa8 40%, #0d1b33 100%); transition: opacity .6s; }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  #loading h1 { font-size: clamp(36px, 7vw, 72px); margin: 0; letter-spacing: -2px; font-weight: 900; }
+  #loading .sub { font-size: 18px; opacity: .85; margin: 6px 0 28px; }
+  #load-progress { width: min(360px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }
+  #load-bar { height: 100%; width: 0; background: #fff; transition: width .2s; }
+  #load-label { margin-top: 12px; font-size: 14px; opacity: .8; min-height: 20px; }
+  #btn-start, #btn-resume { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 14px 28px; border-radius: 999px; border: 0; background: #fff; color: var(--ink); font: 800 18px system-ui, sans-serif; cursor: pointer; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+  #btn-resume { display: inline-flex; }
+  #loading .ctl-mini { margin-top: 26px; font-size: 13px; opacity: .85; line-height: 1.9; }
+  #loading .credit { position: absolute; bottom: 12px; font-size: 11px; opacity: .6; }
+  @media (max-width: 700px) { #keys { display: none; } #minimap { width: 130px; height: 130px; } #speed { font-size: 44px; } }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div class="hud" id="piste"></div>
+<div class="hud" id="chrono"></div>
+<div class="hud" id="alt"></div>
+<div class="hud" id="speed"></div>
+<canvas class="hud" id="minimap" width="400" height="400"></canvas>
+<div class="hud" id="msg"></div>
+<div class="hud" id="fps"></div>
+<div class="hud" id="keys"><kbd>←</kbd><kbd>→</kbd> tourner · <kbd>↑</kbd> schuss · <kbd>↓</kbd> freiner · <kbd>Espace</kbd> saut<br><kbd>R</kbd> retour en haut · <kbd>T</kbd> téléporter · <kbd>C</kbd> caméra · <kbd>H</kbd> aide</div>
+
+<div class="panel" id="teleport"><div class="card">
+  <h2>Se téléporter</h2>
+  <p>Sommets des remontées du secteur Arc 1600. Touche 1–9 ou clic.</p>
+  <div id="tp-list"></div>
+</div></div>
+
+<div class="panel" id="help"><div class="card">
+  <h2>Commandes</h2>
+  <p>Clavier (flèches, ou ZQSD / WASD) ou manette.</p>
+  <table class="ctl">
+    <tr><td>Tourner (carving)</td><td>← → · stick gauche</td></tr>
+    <tr><td>Schuss / pousser sur les bâtons</td><td>↑ · RT</td></tr>
+    <tr><td>Freiner (dérapage, chasse-neige)</td><td>↓ · LT</td></tr>
+    <tr><td>Saut (maintenir pour charger)</td><td>Espace · A</td></tr>
+    <tr><td>Retour au sommet du Mont-Blanc</td><td>R · Select</td></tr>
+    <tr><td>Téléportation</td><td>T · Y</td></tr>
+    <tr><td>Changer de caméra</td><td>C · B</td></tr>
+    <tr><td>Couper le son</td><td>M</td></tr>
+    <tr><td>Qualité graphique (haute / moyenne / basse)</td><td>G</td></tr>
+    <tr><td>Afficher les images par seconde</td><td>F</td></tr>
+    <tr><td>Pause</td><td>Échap · Start</td></tr>
+  </table>
+</div></div>
+
+<div class="panel" id="pause"><div class="card" style="text-align:center">
+  <h2>Pause</h2><p>Appuie sur Échap pour reprendre.</p>
+  <button id="btn-resume">Reprendre</button>
+</div></div>
+
+<div id="loading">
+  <h1>Les Arcs</h1>
+  <div class="sub">Arc 1600 · Piste Mont-Blanc</div>
+  <div id="load-progress"><div id="load-bar"></div></div>
+  <div id="load-label">Chargement…</div>
+  <button id="btn-start">Skier ▸</button>
+  <div class="ctl-mini"><kbd>←</kbd> <kbd>→</kbd> tourner &nbsp; <kbd>↑</kbd> schuss &nbsp; <kbd>↓</kbd> freiner &nbsp; <kbd>Espace</kbd> saut &nbsp; <kbd>R</kbd> remonter &nbsp; <kbd>T</kbd> téléporter</div>
+  <div class="credit">Relief et photos : © IGN (RGE ALTI®, BD ORTHO®) · Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL)</div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
