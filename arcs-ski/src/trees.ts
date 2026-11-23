@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { HeightField, MaskField } from './data';
-import { TreeStyle, shadeAO, coniferBranches, coniferCards, cardMaterial } from './treestyles';
+import { TreeStyle, shadeAO, coniferBranches, coniferCards, cardMaterial, makeImpostor } from './treestyles';
 
 /** Conifère low-poly enneigé, hauteur 1, faces plates. round = silhouette plus ronde (pin cembro). */
 function conifer(tiers: number, seg: number, seed: number, round = false, lite = false): THREE.BufferGeometry {
@@ -91,7 +91,7 @@ export class Forest {
   private half: number;
   private extra: { x: number; z: number; r: number; h: number }[] = [];
 
-  constructor(raw: Uint16Array, hf: HeightField, mask: MaskField, public style: TreeStyle = 'A') {
+  constructor(raw: Uint16Array, hf: HeightField, mask: MaskField, public style: TreeStyle = 'A', renderer?: THREE.WebGLRenderer) {
     this.half = hf.half;
     const n0 = raw.length / 3;
     const X: number[] = [], Z: number[] = [], H: number[] = [];
@@ -138,6 +138,13 @@ export class Forest {
       geoMid = [coniferBranches(8, 7, 5), coniferBranches(9, 7, 17), coniferBranches(7, 7, 41, true)];
       lodMat[0] = cm;
     }
+    // lointain : imposteurs photographiés depuis le modèle intermédiaire (même teinte, même neige)
+    let loMats: THREE.Material[] | null = null;
+    if (renderer && style !== 'A') {
+      const imps = geoMid.map(g => makeImpostor(renderer, g));
+      geoLo = imps.map(i => i.geo);
+      loMats = imps.map(i => i.mat);
+    }
     // données par arbre : matrice, couleur, espèce ; liste par carré de 128 m pour les requêtes de distance
     const n = this.count;
     this.mats = new Float32Array(n * 16); this.cols = new Float32Array(n * 3); this.species = new Uint8Array(n);
@@ -168,7 +175,7 @@ export class Forest {
     for (let lod = 0; lod < 3; lod++) {
       const row: THREE.InstancedMesh[] = [];
       for (let sp = 0; sp < 3; sp++) {
-        const im = new THREE.InstancedMesh(geos[lod][sp], lodMat[lod], caps[lod]);
+        const im = new THREE.InstancedMesh(geos[lod][sp], lod === 2 && loMats ? loMats[sp] : lodMat[lod], caps[lod]);
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         im.setColorAt(0, col.setRGB(1, 1, 1));
         im.instanceColor!.setUsage(THREE.DynamicDrawUsage);

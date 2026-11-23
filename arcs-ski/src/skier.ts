@@ -377,7 +377,7 @@ export class Skier {
       if (inp.jump) this.compress = Math.min(1, this.compress + dt * 3);
       if (!inp.jump && this.jumpHeld) {
         this.jumpHeld = false;
-        v.addScaledVector(n, 2.2 + 2.8 * this.compress);
+        v.addScaledVector(n, 3.0 + 3.4 * this.compress);
         this.grounded = false; this.airTime = 0;
         this.pos.y += 0.05;
         this.events.push('jump');

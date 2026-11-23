@@ -242,3 +242,55 @@ export function cardMaterial(): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ map: branchTexture(), vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, emissive: 0x050806 });
   return m;
 }
+
+/**
+ * Imposteur pour les sapins lointains : le modèle détaillé est photographié une fois (vue de côté)
+ * dans une texture, puis affiché sur deux plans croisés (4 triangles par arbre).
+ */
+export function makeImpostor(renderer: THREE.WebGLRenderer, src: THREE.BufferGeometry, srcMap: THREE.Texture | null = null): { geo: THREE.BufferGeometry; mat: THREE.MeshLambertMaterial } {
+  const W = 128, H = 256;
+  const rt = new THREE.WebGLRenderTarget(W, H, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+  const scene = new THREE.Scene();
+  const m = new THREE.MeshBasicMaterial({ vertexColors: true, map: srcMap, alphaTest: srcMap ? 0.5 : 0, side: THREE.DoubleSide });
+  // stockage en sRGB (8 bits) : sinon les verts sombres, en valeurs linéaires, perdent toute précision
+  m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = pow(max(gl_FragColor.rgb, 0.0), vec3(1.0 / 2.2));'); };
+  const mesh = new THREE.Mesh(src, m);
+  scene.add(mesh);
+  const cam = new THREE.OrthographicCamera(-0.5, 0.5, 1.02, 0, -2, 2);
+  cam.position.set(0, 0, 1); cam.lookAt(0, 0, 0);
+  // éclaircit un peu l'arrière-plan transparent pour éviter un liseré noir au filtrage
+  const prevTarget = renderer.getRenderTarget();
+  const prevColor = new THREE.Color(); renderer.getClearColor(prevColor); const prevAlpha = renderer.getClearAlpha();
+  const prevTM = renderer.toneMapping;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.setRenderTarget(rt);
+  renderer.setClearColor(0x2a4030, 0);
+  renderer.clear(true, true, true);
+  renderer.render(scene, cam);
+  renderer.setRenderTarget(prevTarget);
+  renderer.setClearColor(prevColor, prevAlpha);
+  renderer.toneMapping = prevTM;
+  m.dispose();
+  // deux plans croisés ; normales inclinées vers l'extérieur pour un éclairage en volume
+  const P: number[] = [], U: number[] = [], N: number[] = [], C: number[] = [];
+  const quad = (ax: number, az: number, bx: number, bz: number) => {
+    const v = [[ax, 0, az, 0, 0], [bx, 0, bz, 1, 0], [bx, 1.02, bz, 1, 1], [ax, 1.02, az, 0, 1]];
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      const q = v[k];
+      P.push(q[0], q[1], q[2]); U.push(q[3], q[4]);
+      const n = new THREE.Vector3(q[0] * 1.6, 0.75, q[2] * 1.6).normalize();
+      N.push(n.x, n.y, n.z); C.push(1, 1, 1);
+    }
+  };
+  quad(-0.5, 0, 0.5, 0); quad(0, -0.5, 0, 0.5);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshLambertMaterial({ map: rt.texture, vertexColors: true, alphaTest: 0.45, side: THREE.DoubleSide, emissive: 0x0a100c });
+  mat.color.setScalar(1.3);   // même luminosité perçue que les sapins en volume
+  mat.userData.rt = rt;
+  return { geo, mat };
+}

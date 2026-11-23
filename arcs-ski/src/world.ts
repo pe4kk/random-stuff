@@ -27,7 +27,8 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
     }
   };
   const slabCol = new THREE.Color(0xe9edf3), railCol = new THREE.Color(0x4a3426);
-  const palette = [new THREE.Color(0x6b4a33), new THREE.Color(0x4f3727), new THREE.Color(0xb7ab98), new THREE.Color(0x8a7a66), new THREE.Color(0x5c4030)];
+  const palette = [new THREE.Color(0x9a6e4c), new THREE.Color(0x7d5a3e), new THREE.Color(0xcfc4b0), new THREE.Color(0xa8977f), new THREE.Color(0x8a6446)];
+  const fascia = new THREE.Color(0x5a3e2a);
   list.forEach((b, bi) => {
     let pts = b.pts.slice();
     // orientation anti-horaire vue du dessus (x, z) -> normales vers l'extérieur
@@ -70,16 +71,26 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
         }
       }
     }
-    const contour = pts.map(p => new THREE.Vector2(p[0], p[1]));
+    // toit monopente façon Arc 1600 : point haut côté amont, grand débord, neige épaisse
+    let dmin = Infinity, dmax = -Infinity;
+    for (const p of pts) { const d = -(p[0] * downX + p[1] * downZ); dmin = Math.min(dmin, d); dmax = Math.max(dmax, d); }
+    const rise = Math.min(0.24, 6 / Math.max(1, dmax - dmin));
+    const roofY = (x: number, z: number) => top + 0.35 + rise * (-(x * downX + z * downZ) - dmin);
+    const over = pts.map(p => { const dx = p[0] - cxm, dz = p[1] - czm, l = Math.hypot(dx, dz) || 1; return [p[0] + dx / l * 1.1, p[1] + dz / l * 1.1] as [number, number]; });
+    const contour = over.map(p => new THREE.Vector2(p[0], p[1]));
     const tris = THREE.ShapeUtils.triangulateShape(contour, []);
     for (const t of tris) {
-      for (const k of [t[0], t[2], t[1]]) roofsP.push(pts[k][0], top + 0.35, pts[k][1]);
+      for (const k of [t[0], t[2], t[1]]) roofsP.push(over[k][0], roofY(over[k][0], over[k][1]), over[k][1]);
     }
-    // bandeau de neige sur l'acrotère
+    // tranche de neige au bord du débord, et pignons en bois sous la pente
     for (let i = 0; i < pts.length; i++) {
-      const a = pts[i], c = pts[(i + 1) % pts.length];
-      roofsP.push(a[0], top - 0.1, a[1], c[0], top + 0.35, c[1], c[0], top - 0.1, c[1]);
-      roofsP.push(a[0], top - 0.1, a[1], a[0], top + 0.35, a[1], c[0], top + 0.35, c[1]);
+      const a = over[i], c = over[(i + 1) % pts.length];
+      const ya = roofY(a[0], a[1]), yc = roofY(c[0], c[1]);
+      roofsP.push(a[0], ya - 0.45, a[1], c[0], yc, c[1], c[0], yc - 0.45, c[1]);
+      roofsP.push(a[0], ya - 0.45, a[1], a[0], ya, a[1], c[0], yc, c[1]);
+      const wa = pts[i], wc = pts[(i + 1) % pts.length];
+      const ra = roofY(wa[0], wa[1]) - 0.3, rc = roofY(wc[0], wc[1]) - 0.3;
+      for (const q of [[wa[0], top, wa[1]], [wc[0], top, wc[1]], [wc[0], rc, wc[1]], [wa[0], top, wa[1]], [wc[0], rc, wc[1]], [wa[0], ra, wa[1]]]) { balP.push(...q); balC.push(fascia.r, fascia.g, fascia.b); }
     }
   });
   const gw = new THREE.BufferGeometry();
@@ -103,7 +114,7 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
   vec3 wall = diffuseColor.rgb * slat;
   float frame = step(0.17, w.x) * step(w.x, 0.83) * step(0.22, w.y) * step(w.y, 0.92) * step(0.0, fl) * (1.0 - win);
   float mull = (1.0 - step(0.035, abs(w.x - 0.5))) * win;
-  vec3 glass = mix(vec3(0.07, 0.09, 0.12), vec3(0.32, 0.4, 0.5), smoothstep(0.3, 0.86, w.y) * 0.6);
+  vec3 glass = mix(vec3(0.16, 0.2, 0.26), vec3(0.55, 0.65, 0.78), smoothstep(0.25, 0.9, w.y) * 0.8);   // reflet du ciel
   vec3 col = mix(wall, vec3(0.86, 0.84, 0.8), frame);
   col = mix(col, glass, win * (1.0 - mull));
   col = mix(col, vec3(0.86, 0.84, 0.8), mull);

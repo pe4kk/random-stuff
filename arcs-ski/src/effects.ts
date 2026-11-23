@@ -67,6 +67,7 @@ export class Tracks {
   private side: Float32Array;
   private i = 0;
   private last: (THREE.Vector3 | null)[] = [];
+  private edge: (number[] | null)[] = [];
   private geo: THREE.BufferGeometry;
 
   constructor(private N = 12000, private minStep = 0.6) {
@@ -85,6 +86,7 @@ export class Tracks {
     this.geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('across', new THREE.BufferAttribute(across, 1));
     this.geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    this.geo.setDrawRange(0, 0);
     // sillon en relief : profil creusé (fond tassé, parois, bourrelet) éclairé selon le soleil.
     // Fusion : couleur = reflet ajouté + neige existante × ombrage (assombrit ET éclaircit, sans éclairage réel)
     this.geo.setAttribute('sideV', new THREE.BufferAttribute(this.side, 2).setUsage(THREE.DynamicDrawUsage));
@@ -124,10 +126,10 @@ export class Tracks {
 
   setSun(d: THREE.Vector3) { ((this.mesh.material as THREE.ShaderMaterial).uniforms.uSun.value as THREE.Vector3).copy(d).normalize(); }
 
-  reset() { this.last = []; }
+  reset() { this.last = []; this.edge = []; }
 
   clear() {
-    this.alpha.fill(0); this.i = 0; this.last = [];
+    this.alpha.fill(0); this.i = 0; this.last = []; this.edge = []; this.geo.setDrawRange(0, 0);
     const aa = this.geo.attributes.alpha as THREE.BufferAttribute;
     aa.clearUpdateRanges(); aa.needsUpdate = true;
   }
@@ -138,20 +140,26 @@ export class Tracks {
       const slot = key * 2 + s;
       const p = points[s];
       const prev = this.last[slot];
-      if (!prev) { this.last[slot] = p.clone(); continue; }
+      if (!prev) { this.last[slot] = p.clone(); this.edge[slot] = null; continue; }
       const d2 = prev.distanceToSquared(p);
       if (d2 < this.minStep * this.minStep) continue;
-      if (d2 > 36) { this.last[slot] = p.clone(); continue; }
+      if (d2 > 36) { this.last[slot] = p.clone(); this.edge[slot] = null; continue; }
       const k = this.i % this.N;
       this.i++;
       const b = k * 12;
       const w = width * 0.5;
       const lift = 0.025;
       const P = this.pos;
-      P[b] = prev.x - side.x * w; P[b + 1] = prev.y + lift; P[b + 2] = prev.z - side.z * w;
-      P[b + 3] = prev.x + side.x * w; P[b + 4] = prev.y + lift; P[b + 5] = prev.z + side.z * w;
+      // le segment repart exactement du bord du précédent : ruban continu, pas de marches dans les virages
+      const e = this.edge[slot];
+      if (e) { P[b] = e[0]; P[b + 1] = e[1]; P[b + 2] = e[2]; P[b + 3] = e[3]; P[b + 4] = e[4]; P[b + 5] = e[5]; }
+      else {
+        P[b] = prev.x - side.x * w; P[b + 1] = prev.y + lift; P[b + 2] = prev.z - side.z * w;
+        P[b + 3] = prev.x + side.x * w; P[b + 4] = prev.y + lift; P[b + 5] = prev.z + side.z * w;
+      }
       P[b + 6] = p.x - side.x * w; P[b + 7] = p.y + lift; P[b + 8] = p.z - side.z * w;
       P[b + 9] = p.x + side.x * w; P[b + 10] = p.y + lift; P[b + 11] = p.z + side.z * w;
+      this.edge[slot] = [P[b + 6], P[b + 7], P[b + 8], P[b + 9], P[b + 10], P[b + 11]];
       this.alpha.fill(strength, k * 4, k * 4 + 4);
       const sl = Math.hypot(side.x, side.z) || 1;
       for (let v = 0; v < 4; v++) { this.side[k * 8 + v * 2] = side.x / sl; this.side[k * 8 + v * 2 + 1] = side.z / sl; }
@@ -159,6 +167,7 @@ export class Tracks {
       this.dirtyLo = Math.min(this.dirtyLo, k); this.dirtyHi = Math.max(this.dirtyHi, k);
     }
     if (update) this.flush();
+    this.geo.setDrawRange(0, Math.min(this.i, this.N) * 6);   // ne dessine que les segments utilisés
   }
 
   private dirtyLo = Infinity; private dirtyHi = -1;

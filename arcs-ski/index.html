@@ -48,6 +48,9 @@
     background: radial-gradient(1200px 600px at 50% 120%, #9fc2ea 0%, #3d6aa8 40%, #0d1b33 100%); transition: opacity .6s; }
   #loading.hide { opacity: 0; pointer-events: none; }
   #loading.ready { background: linear-gradient(180deg, rgba(8,16,32,.78) 0%, rgba(8,16,32,.15) 38%, rgba(8,16,32,.1) 62%, rgba(8,16,32,.7) 100%); }
+  /* lisibilité du titre : halo sombre derrière le texte */
+  #loading.ready::before { content: ''; position: absolute; left: 50%; top: 50%; width: min(900px, 96vw); height: 420px; transform: translate(-50%, -50%); background: radial-gradient(ellipse at center, rgba(6,14,28,.62) 0%, rgba(6,14,28,.35) 45%, rgba(6,14,28,0) 72%); pointer-events: none; z-index: -1; }
+  #loading .sub, #load-label { text-shadow: 0 1px 6px rgba(0,0,0,.8); }
   #loading h1 { font-size: clamp(36px, 7vw, 72px); margin: 0; letter-spacing: -2px; font-weight: 900; }
   #loading .sub { font-size: 18px; opacity: .85; margin: 6px 0 28px; }
   #load-progress { width: min(360px, 80vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.2); overflow: hidden; }

@@ -145,8 +145,8 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN; 
   gAcross = across;
   float band = 0.5 + 0.5 * sin(across * 1.396 + dA.a * 2.0);
   // velours filtré : s'efface quand les stries deviennent plus fines qu'un pixel (pas de moiré)
-  float cw = fwidth(across * 40.0 / 6.2832);
-  float cord = mix(0.5 + 0.5 * sin(across * 40.0), 0.5, smoothstep(0.25, 0.7, cw));
+  float cw = fwidth(across * 80.0 / 6.2832);
+  float cord = mix(0.5 + 0.5 * sin(across * 80.0), 0.5, smoothstep(0.25, 0.7, cw));
   float bw = fwidth(across * 1.396 / 6.2832);
   band = mix(band, 0.5, smoothstep(0.3, 0.8, bw));
   gCordF = 1.0 - smoothstep(0.25, 0.7, cw); gBandF = 1.0 - smoothstep(0.3, 0.8, bw);
@@ -157,7 +157,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN; 
   col = mix(col, vec3(1.02, 1.03, 1.05), gEdge * 0.85);
   // rochers sur les fortes pentes
   float rockN = dB.a;
-  gRock = smoothstep(0.30, 0.42, slope + 0.14 * (rockN - 0.5));
+  gRock = smoothstep(0.24, 0.37, slope + 0.14 * (rockN - 0.5));
   #if !KIND_CORE
     gRock = smoothstep(0.2, 0.34, slope + 0.16 * (rockN - 0.5) + 0.08 * (vnoise(vWPos.xz / 160.0) - 0.5));
   #endif
@@ -222,7 +222,9 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   float rip = cos(rph) * (1.0 - smoothstep(0.2, 0.6, fwidth(rph / 6.2832)));
   pert.xz += wd * rip * 0.18 * powderK * (1.0 - smoothstep(30.0, 300.0, d));
   // velours de dameuse et bandes en relief : la lumière rasante dessine les stries
-  float cordH = cos(gAcross * 40.0) * 0.13 * gCordF * (1.0 - smoothstep(12.0, 70.0, d)) + cos(gAcross * 1.396) * 0.06 * gBandF * (1.0 - smoothstep(60.0, 220.0, d));
+  // velours fin (≈ 8 cm), discret, modulé par un bruit lent pour casser la régularité
+  float cordMod = 0.45 + 0.55 * n2.y;
+  float cordH = cos(gAcross * 80.0) * 0.06 * gCordF * cordMod * (1.0 - smoothstep(6.0, 35.0, d)) + cos(gAcross * 1.396) * 0.035 * gBandF * (1.0 - smoothstep(60.0, 220.0, d));
   pert.xz += gDir * cordH * gPiste * (1.0 - gPack * 0.6) * (0.8 + 0.4 * n2.y);
   normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
 }
@@ -245,7 +247,7 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
 }
 #endif`);
   };
-  mat.customProgramCacheKey = () => 'snow5-' + kind;
+  mat.customProgramCacheKey = () => 'snow6-' + kind;
   return mat;
 }
 

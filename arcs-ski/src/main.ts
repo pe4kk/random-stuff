@@ -123,19 +123,22 @@ function build(data: GameData) {
   midTex.flipY = false; midTex.colorSpace = THREE.NoColorSpace; midTex.needsUpdate = true;
   const midMat = makeSnowMaterial('mid', midTex, meta.midHalf);
   (midMat as any).snowUniforms.uNormTex.value = makeNormalTexture(midHF);
-  scene.add(makeBackdrop(midHF, 320, meta.coreHalf - 40, 30, midMat));
+  const midHi = makeBackdrop(midHF, 320, meta.coreHalf - 40, 30, midMat), midLo = makeBackdrop(midHF, 160, meta.coreHalf - 40, 30, midMat);
+  scene.add(midHi, midLo);
   const farMat = makeSnowMaterial('far', null, meta.farHalf);
   (farMat as any).snowUniforms.uNormTex.value = makeNormalTexture(farHF);
-  scene.add(makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat));
+  const farHi = makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat), farLo = makeBackdrop(farHF, 240, meta.midHalf - 300, 80, farMat);
+  scene.add(farHi, farLo);
 
   // ------------------------------------------------------- monde
   // style des sapins : ?arbres=A|B|C|D ou réglage enregistré
   const styleParam = new URLSearchParams(location.search).get('arbres');
   let treeStyle: TreeStyle = 'D';
   try { const st = styleParam; if (st && 'ABCD'.includes(st) && st.length === 1) treeStyle = st as TreeStyle; } catch { /* ignore */ }
-  const forest = new Forest(data.trees, hf, mask, treeStyle);
+  const forest = new Forest(data.trees, hf, mask, treeStyle, renderer);
   scene.add(forest.group);
-  scene.add(makeBuildings(data.features.buildings, hf));
+  const buildings = makeBuildings(data.features.buildings, hf);
+  scene.add(buildings);
   if (data.features.farBuildings) scene.add(makeFarBuildings(data.features.farBuildings, (x, z) => midHF.height(x, z)));
   const lifts = makeLifts(data.features.lifts, hf, scene, mask, forest);
   scene.add(makePistePoles(data.features.pistes, hf, mask));
@@ -150,7 +153,7 @@ function build(data: GameData) {
   // ------------------------------------------------------- skieur
   const skier = new Skier(hf, mask, forest);
   scene.add(skier.model.root);
-  const tracks = new Tracks(10000, 0.5); scene.add(tracks.mesh);
+  const tracks = new Tracks(14000, 0.3); scene.add(tracks.mesh);
   const spray = new Spray(); scene.add(spray.points);
   // autres skieurs + traces déjà présentes sur les pistes
   const routes = buildRoutes(data.features.pistes, lifts, hf);
@@ -225,7 +228,7 @@ function build(data: GameData) {
     let target: THREE.Vector3, look: THREE.Vector3;
     if (camMode === 2) {
       const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.4, 0.12));
-      target = h.clone().addScaledVector(head, -0.2); look = h.clone().addScaledVector(head, 6).add(new THREE.Vector3(0, -4.6, 0));
+      target = h.clone().addScaledVector(head, -0.5); look = h.clone().addScaledVector(head, 10).add(new THREE.Vector3(0, -3.2, 0));   // ~18° vers le bas : horizon visible, spatules en bas du cadre
     } else {
       let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
       let height = (camMode === 0 ? 4.8 : 10) * camZoom;
@@ -262,7 +265,7 @@ function build(data: GameData) {
     if (camPos.y < ground) camPos.y = ground;
     camera.position.copy(camPos);
     camera.lookAt(camLook);
-    const fov = 62 + Math.min(16, sp * 0.45);
+    const fov = (camMode === 2 ? 74 : 62) + Math.min(16, sp * 0.45);
     camera.fov += (fov - camera.fov) * Math.min(1, dt * 2);
     // léger tremblement à grande vitesse
     if (sp > 16 && skier.grounded && camMode !== 2) {
@@ -408,9 +411,9 @@ function build(data: GameData) {
 
   // ------------------------------------------------------- qualité graphique
   const QUALITY = [
-    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 4096, hi: 330, lo: 1000, lod: [520, 1300], post: true, terrainShadow: true, crowd: 110, veh: 650 },
+    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 2048, hi: 330, lo: 1000, lod: [520, 1300], post: true, terrainShadow: true, crowd: 110, veh: 650 },
     { name: 'Moyenne', ratio: 1, shadow: 2048, hi: 240, lo: 650, lod: [260, 800], post: false, terrainShadow: false, crowd: 80, veh: 420 },
-    { name: 'Basse', ratio: 0.75, shadow: 1024, hi: 160, lo: 480, lod: [220, 600], post: false, terrainShadow: false, crowd: 55, veh: 280 },
+    { name: 'Basse', ratio: 0.75, shadow: 1024, hi: 130, lo: 360, lod: [140, 380], post: false, terrainShadow: false, crowd: 35, veh: 220 },
   ];
   let quality = 1;
   try { const sq = localStorage.getItem('arcs-quality'); if (sq !== null) { const q = Number(sq); if (q >= 0 && q < 3) quality = q; } } catch { /* ignore */ }
@@ -432,6 +435,10 @@ function build(data: GameData) {
     core.lodDist = Q.lod;
     core.chunks.forEach(c => (c.mesh.castShadow = Q.terrainShadow));
     crowd.nearDist = Q.crowd;
+    // qualité Basse : seuls les sapins proches, les skieurs et les remontées projettent des ombres
+    buildings.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = q < 2; });
+    (rocks as any).shadowOn = q < 2;
+    midHi.visible = farHi.visible = q < 2; midLo.visible = farLo.visible = q === 2;   // relief lointain allégé en Basse
     document.body.classList.toggle('css-grade', !(Q.post && composer));
     try { localStorage.setItem('arcs-quality', String(q)); } catch { /* ignore */ }
     if (announce) message(`Qualité graphique : ${Q.name}`, 1.6);

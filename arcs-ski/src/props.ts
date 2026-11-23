@@ -156,7 +156,7 @@ export function makeRocks(hf: HeightField, mask: MaskField, forest: Forest): THR
     for (const c of chunks) {
       const d = Math.hypot(c.x - cam.x, c.z - cam.z) - CH * 0.7;
       c.mesh.visible = d < far;
-      c.mesh.castShadow = d < 200;
+      c.mesh.castShadow = d < 200 && (g as any).shadowOn !== false;
     }
   };
   return g;
