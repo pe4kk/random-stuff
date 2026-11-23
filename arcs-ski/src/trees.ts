@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HeightField, MaskField } from './data';
+import { TreeStyle, shadeAO, coniferBranches, coniferCards, cardMaterial } from './treestyles';
 
 /** Conifère low-poly enneigé, hauteur 1, faces plates. round = silhouette plus ronde (pin cembro). */
 function conifer(tiers: number, seg: number, seed: number, round = false, lite = false): THREE.BufferGeometry {
@@ -90,7 +91,7 @@ export class Forest {
   private half: number;
   private extra: { x: number; z: number; r: number; h: number }[] = [];
 
-  constructor(raw: Uint16Array, hf: HeightField, mask: MaskField) {
+  constructor(raw: Uint16Array, hf: HeightField, mask: MaskField, public style: TreeStyle = 'A') {
     this.half = hf.half;
     const n0 = raw.length / 3;
     const X: number[] = [], Z: number[] = [], H: number[] = [];
@@ -117,9 +118,24 @@ export class Forest {
 
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: 0x060a08 });
     mat.color.setScalar(1.3);
-    const geoHi = [conifer(11, 13, 11), conifer(12, 12, 29), conifer(8, 13, 53, true)];
-    const geoMid = [conifer(6, 8, 5), conifer(6, 8, 17), conifer(5, 8, 41, true)];
-    const geoLo = [conifer(2, 5, 7, false, true), conifer(2, 5, 13, false, true), conifer(2, 5, 9, true, true)];
+    let geoHi = [conifer(11, 13, 11), conifer(12, 12, 29), conifer(8, 13, 53, true)];
+    let geoMid = [conifer(6, 8, 5), conifer(6, 8, 17), conifer(5, 8, 41, true)];
+    let geoLo = [conifer(2, 5, 7, false, true), conifer(2, 5, 13, false, true), conifer(2, 5, 9, true, true)];
+    const lodMat = [mat, mat, mat];
+    if (style !== 'A') {
+      geoMid.forEach(g => shadeAO(g)); geoLo.forEach(g => shadeAO(g, 0.6));
+    }
+    if (style === 'B') geoHi.forEach(g => shadeAO(g));
+    if (style === 'C') {
+      geoHi = [coniferBranches(14, 11, 11), coniferBranches(15, 10, 29), coniferBranches(10, 11, 53, true)];
+      geoMid = [shadeAO(conifer(8, 10, 5)), shadeAO(conifer(8, 10, 17)), shadeAO(conifer(6, 10, 41, true))];
+    }
+    if (style === 'D') {
+      const cm = cardMaterial();
+      geoHi = [coniferCards(12, 8, 11), coniferCards(13, 8, 29), coniferCards(9, 9, 53, true)];
+      geoMid = [coniferCards(7, 6, 5), coniferCards(7, 6, 17), coniferCards(6, 6, 41, true)];
+      lodMat[0] = cm; lodMat[1] = cm;
+    }
     // données par arbre : matrice, couleur, espèce ; liste par carré de 128 m pour les requêtes de distance
     const n = this.count;
     this.mats = new Float32Array(n * 16); this.cols = new Float32Array(n * 3); this.species = new Uint8Array(n);
@@ -150,7 +166,7 @@ export class Forest {
     for (let lod = 0; lod < 3; lod++) {
       const row: THREE.InstancedMesh[] = [];
       for (let sp = 0; sp < 3; sp++) {
-        const im = new THREE.InstancedMesh(geos[lod][sp], mat, caps[lod]);
+        const im = new THREE.InstancedMesh(geos[lod][sp], lodMat[lod], caps[lod]);
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         im.setColorAt(0, col.setRGB(1, 1, 1));
         im.instanceColor!.setUsage(THREE.DynamicDrawUsage);

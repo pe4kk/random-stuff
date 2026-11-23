@@ -3,6 +3,7 @@ import { GameData, HeightField, MaskField, Piste, loadAll } from './data';
 import { loadSkier } from './skinrig';
 import { CoreTerrain, makeBackdrop, makeGroomTexture, makeNormalTexture, makeSnowMaterial } from './terrain';
 import { Forest } from './trees';
+import type { TreeStyle } from './treestyles';
 import { DIFF_COLOR, DIFF_LABEL, LiftRuntime, makeFarBuildings, makeBuildings, makeLifts, makePistePoles, makeSigns } from './world';
 import { Skier } from './skier';
 import { Tracks, Spray, makeSky } from './effects';
@@ -128,7 +129,11 @@ function build(data: GameData) {
   scene.add(makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat));
 
   // ------------------------------------------------------- monde
-  const forest = new Forest(data.trees, hf, mask);
+  // style des sapins : ?arbres=A|B|C|D ou réglage enregistré
+  const styleParam = new URLSearchParams(location.search).get('arbres');
+  let treeStyle: TreeStyle = 'A';
+  try { const st = styleParam ?? localStorage.getItem('arcs-trees'); if (st && 'ABCD'.includes(st) && st.length === 1) treeStyle = st as TreeStyle; } catch { /* ignore */ }
+  const forest = new Forest(data.trees, hf, mask, treeStyle);
   scene.add(forest.group);
   scene.add(makeBuildings(data.features.buildings, hf));
   if (data.features.farBuildings) scene.add(makeFarBuildings(data.features.farBuildings, (x, z) => midHF.height(x, z)));
