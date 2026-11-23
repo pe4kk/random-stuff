@@ -116,12 +116,13 @@ export class Forest {
       this.index(i, this.xs[i], this.zs[i]);
     }
 
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: 0x060a08 });
+    // éclairage diffus (Lambert) : moins coûteux que le PBR, identique à l’œil sur des aiguilles mates
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x060a08 });
     mat.color.setScalar(1.3);
     let geoHi = [conifer(11, 13, 11), conifer(12, 12, 29), conifer(8, 13, 53, true)];
     let geoMid = [conifer(6, 8, 5), conifer(6, 8, 17), conifer(5, 8, 41, true)];
     let geoLo = [conifer(2, 5, 7, false, true), conifer(2, 5, 13, false, true), conifer(2, 5, 9, true, true)];
-    const lodMat = [mat, mat, mat];
+    const lodMat: THREE.Material[] = [mat, mat, mat];
     if (style !== 'A') {
       geoMid.forEach(g => shadeAO(g)); geoLo.forEach(g => shadeAO(g, 0.6));
     }
@@ -132,9 +133,10 @@ export class Forest {
     }
     if (style === 'D') {
       const cm = cardMaterial();
-      geoHi = [coniferCards(12, 8, 11), coniferCards(13, 8, 29), coniferCards(9, 9, 53, true)];
-      geoMid = [coniferCards(7, 6, 5), coniferCards(7, 6, 17), coniferCards(6, 6, 41, true)];
-      lodMat[0] = cm; lodMat[1] = cm;
+      // cartes détourées seulement de près ; au-delà, branches pleines (pas de découpe = beaucoup moins de pixels calculés)
+      geoHi = [coniferCards(11, 7, 11), coniferCards(12, 7, 29), coniferCards(9, 8, 53, true)];
+      geoMid = [coniferBranches(8, 7, 5), coniferBranches(9, 7, 17), coniferBranches(7, 7, 41, true)];
+      lodMat[0] = cm;
     }
     // données par arbre : matrice, couleur, espèce ; liste par carré de 128 m pour les requêtes de distance
     const n = this.count;

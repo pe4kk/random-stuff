@@ -131,8 +131,8 @@ function build(data: GameData) {
   // ------------------------------------------------------- monde
   // style des sapins : ?arbres=A|B|C|D ou réglage enregistré
   const styleParam = new URLSearchParams(location.search).get('arbres');
-  let treeStyle: TreeStyle = 'A';
-  try { const st = styleParam ?? localStorage.getItem('arcs-trees'); if (st && 'ABCD'.includes(st) && st.length === 1) treeStyle = st as TreeStyle; } catch { /* ignore */ }
+  let treeStyle: TreeStyle = 'D';
+  try { const st = styleParam; if (st && 'ABCD'.includes(st) && st.length === 1) treeStyle = st as TreeStyle; } catch { /* ignore */ }
   const forest = new Forest(data.trees, hf, mask, treeStyle);
   scene.add(forest.group);
   scene.add(makeBuildings(data.features.buildings, hf));

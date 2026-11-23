@@ -237,7 +237,8 @@ export function coniferCards(tiers: number, perTier: number, seed: number, round
 }
 
 /** matériau des cartes : texture détourée, double face */
-export function cardMaterial(): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ map: branchTexture(), vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, emissive: 0x050806 });
+export function cardMaterial(): THREE.MeshLambertMaterial {
+  // éclairage diffus simple (moins coûteux que le PBR) : suffisant pour des aiguilles mates
+  const m = new THREE.MeshLambertMaterial({ map: branchTexture(), vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide, emissive: 0x050806 });
   return m;
 }
