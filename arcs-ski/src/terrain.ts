@@ -157,8 +157,12 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN;`
   #endif
   // roche en projection triplanaire (pas d'étirement sur les falaises)
   vec3 bw3 = pow(abs(wn), vec3(4.0)); bw3 /= (bw3.x + bw3.y + bw3.z);
-  float rx = texture2D(uDetail, vWPos.zy / 23.0).a, ry = dA.a, rz = texture2D(uDetail, vWPos.xy / 23.0).a;
-  float rt = rx * bw3.x + ry * bw3.y + rz * bw3.z;
+  #if KIND_CORE
+    float rx = texture2D(uDetail, vWPos.zy / 23.0).a, ry = dA.a, rz = texture2D(uDetail, vWPos.xy / 23.0).a;
+    float rt = rx * bw3.x + ry * bw3.y + rz * bw3.z;
+  #else
+    float rt = dA.a;      // au loin : une seule projection suffit
+  #endif
   float strata = 0.5 + 0.5 * sin(vWPos.y * 0.9 + rt * 5.0);
   vec3 rock = mix(vec3(0.17, 0.16, 0.15), vec3(0.47, 0.44, 0.40), rt * 0.75 + strata * 0.25);
   col = mix(col, rock, gRock * (1.0 - gPiste));
@@ -194,6 +198,9 @@ reflectedLight.indirectDiffuse *= vec3(0.80, 0.91, 1.18);`)
 roughnessFactor = mix(0.93, 0.5, gPiste);
 roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+#if !KIND_CORE
+  normal = normalize((viewMatrix * vec4(gWN, 0.0)).xyz);
+#else
 {
   float d = length(cameraPosition - vWPos);
   // relief fin : texture filtrée (mipmaps) à deux échelles, plus marqué en poudreuse
@@ -208,13 +215,11 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   float rph = dot(vWPos.xz, wd) * 0.85 + n2.x * 6.0;
   float rip = cos(rph) * (1.0 - smoothstep(0.2, 0.6, fwidth(rph / 6.2832)));
   pert.xz += wd * rip * 0.18 * powderK * (1.0 - smoothstep(30.0, 300.0, d));
-  #if KIND_CORE
-    normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
-  #else
-    normal = normalize((viewMatrix * vec4(gWN + pert * 0.5, 0.0)).xyz);
-  #endif
-}`)
+  normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
+}
+#endif`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+#if KIND_CORE
 {
   float d = length(cameraPosition - vWPos);
   if (d < 24.0) {
@@ -228,9 +233,10 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
     float sp = step(0.985, tw) * step(0.5, h) * dot0 * (1.0 - smoothstep(4.0, 22.0, d)) * (1.0 - gRock) * max(dot(normalize(vWNorm), uSunDir), 0.0) * (1.0 - 0.6 * gPiste);
     totalEmissiveRadiance += vec3(1.0, 0.98, 0.92) * sp * 2.5;
   }
-}`);
+}
+#endif`);
   };
-  mat.customProgramCacheKey = () => 'snow3-' + kind;
+  mat.customProgramCacheKey = () => 'snow4-' + kind;
   return mat;
 }
 
@@ -238,12 +244,14 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
 // Terrain principal : 16×16 tronçons de 256 m, 3 niveaux de détail + jupes.
 // ----------------------------------------------------------------------------
 const LODS = [1, 2, 8]; // pas en cellules (2 m, 4 m, 16 m)
-const LOD_DIST = [420, 1000];
+
 
 export class CoreTerrain {
   group = new THREE.Group();
   chunks: { mesh: THREE.Mesh; cx: number; cz: number; lod: number; geos: (THREE.BufferGeometry | null)[]; center: THREE.Vector3 }[] = [];
   readonly chunkCells = 128;
+  /** distances de passage aux niveaux 4 m et 16 m (réglées par la qualité graphique) */
+  lodDist = [420, 1000];
   readonly nChunks: number;
 
   constructor(public hf: HeightField, public material: THREE.Material) {
@@ -329,7 +337,7 @@ export class CoreTerrain {
     for (const { ch, d } of sorted) {
       const half = this.chunkCells * this.hf.cell * 0.5;
       const dd = Math.max(0, d - half);
-      const want = dd < LOD_DIST[0] ? 0 : dd < LOD_DIST[1] ? 1 : 2;
+      const want = dd < this.lodDist[0] ? 0 : dd < this.lodDist[1] ? 1 : 2;
       if (want !== ch.lod) {
         if (!ch.geos[want]) {
           if (budget <= 0) continue;
@@ -340,7 +348,7 @@ export class CoreTerrain {
         ch.lod = want;
       }
       // libère la mémoire des niveaux fins éloignés
-      if (dd > LOD_DIST[1] * 1.6 && ch.geos[0]) { ch.geos[0]!.dispose(); ch.geos[0] = null; }
+      if (dd > this.lodDist[1] * 1.6 && ch.geos[0]) { ch.geos[0]!.dispose(); ch.geos[0] = null; }
     }
   }
 
@@ -353,33 +361,40 @@ export class CoreTerrain {
 // ----------------------------------------------------------------------------
 // Terrains de fond (vallée, massifs lointains)
 // ----------------------------------------------------------------------------
-export function makeBackdrop(hf: HeightField, segs: number, holeHalf: number, drop: number, mat: THREE.Material): THREE.Mesh {
-  const W = segs + 1;
-  const pos = new Float32Array(W * W * 3);
+export function makeBackdrop(hf: HeightField, segs: number, holeHalf: number, drop: number, mat: THREE.Material, tiles = 8): THREE.Group {
+  // découpé en tuiles : celles hors du champ de vision ne sont pas dessinées
+  const group = new THREE.Group();
   const size = hf.half * 2;
-  for (let b = 0; b < W; b++) {
-    for (let a = 0; a < W; a++) {
-      const x = -hf.half + (a / segs) * size;
-      const z = -hf.half + (b / segs) * size;
+  const ts = segs / tiles;
+  for (let ty = 0; ty < tiles; ty++) for (let tx = 0; tx < tiles; tx++) {
+    const W = ts + 1;
+    const pos = new Float32Array(W * W * 3);
+    let allHole = true;
+    for (let b = 0; b < W; b++) for (let a = 0; a < W; a++) {
+      const x = -hf.half + ((tx * ts + a) / segs) * size;
+      const z = -hf.half + ((ty * ts + b) / segs) * size;
       let y = hf.height(x, z);
-      if (Math.abs(x) < holeHalf && Math.abs(z) < holeHalf) y -= drop;
+      if (Math.abs(x) < holeHalf && Math.abs(z) < holeHalf) y -= drop; else allHole = false;
       const k = (b * W + a) * 3;
       pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
     }
+    if (allHole) continue;     // entièrement recouverte par le terrain plus fin
+    const idx = new Uint32Array(ts * ts * 6);
+    let t = 0;
+    for (let b = 0; b < ts; b++) for (let a = 0; a < ts; a++) {
+      const p00 = b * W + a, p10 = p00 + 1, p01 = p00 + W, p11 = p01 + 1;
+      idx[t++] = p00; idx[t++] = p01; idx[t++] = p10; idx[t++] = p11; idx[t++] = p10; idx[t++] = p01;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, mat);
+    m.receiveShadow = false; m.matrixAutoUpdate = false;
+    group.add(m);
   }
-  const idx = new Uint32Array(segs * segs * 6);
-  let t = 0;
-  for (let b = 0; b < segs; b++) for (let a = 0; a < segs; a++) {
-    const p00 = b * W + a, p10 = p00 + 1, p01 = p00 + W, p11 = p01 + 1;
-    idx[t++] = p00; idx[t++] = p01; idx[t++] = p10; idx[t++] = p11; idx[t++] = p10; idx[t++] = p01;
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, mat);
-  m.receiveShadow = false;
-  return m;
+  return group;
 }
 
 // ----------------------------------------------------------------------------

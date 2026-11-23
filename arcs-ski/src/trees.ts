@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { HeightField, MaskField } from './data';
 
 /** Conifère low-poly enneigé, hauteur 1, faces plates. round = silhouette plus ronde (pin cembro). */
-function conifer(tiers: number, seg: number, seed: number, round = false): THREE.BufferGeometry {
+function conifer(tiers: number, seg: number, seed: number, round = false, lite = false): THREE.BufferGeometry {
   const P: number[] = [], C: number[] = [];
   let s = seed;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -13,7 +13,7 @@ function conifer(tiers: number, seg: number, seed: number, round = false): THREE
     for (let i = 0; i < 3; i++) C.push(col.r, col.g, col.b);
   };
   const tr = 0.026, th = 0.25;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < (lite ? 0 : 5); i++) {
     const a0 = (i / 5) * Math.PI * 2, a1 = ((i + 1) / 5) * Math.PI * 2;
     const p0 = [Math.cos(a0) * tr, 0, Math.sin(a0) * tr], p1 = [Math.cos(a1) * tr, 0, Math.sin(a1) * tr];
     const q0 = [p0[0] * 0.6, th, p0[2] * 0.6], q1 = [p1[0] * 0.6, th, p1[2] * 0.6];
@@ -46,8 +46,8 @@ function conifer(tiers: number, seg: number, seed: number, round = false): THREE
       tri(ia, ib, b, col);
       const snowy = rnd() < 0.5 + 0.35 * f;
       tri(apex, ib, ia, snowy ? snow : col);
-      if (rnd() < 0.35) tri(ia, b, a, snowShade); // paquets de neige sur les branches
-      tri(a, b, under, dark);
+      if (!lite && rnd() < 0.35) tri(ia, b, a, snowShade); // paquets de neige sur les branches
+      if (!lite) tri(a, b, under, dark);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -80,8 +80,13 @@ export class Forest {
   count = 0;
   private grid = new Map<number, number[]>();
   private readonly gcell = 8;
-  private chunks: { hi: THREE.InstancedMesh; mid: THREE.InstancedMesh; lo: THREE.InstancedMesh; cx: number; cz: number }[] = [];
-  readonly chunkSize = 256;
+  private meshes: THREE.InstancedMesh[][] = [];   // [lod][espèce]
+  private caps: number[] = [];
+  private mats!: Float32Array; private cols!: Float32Array; private species!: Uint8Array;
+  private cells: number[][] = [];
+  private readonly cellSize = 128;
+  private get nCell() { return Math.round((this.half * 2) / this.cellSize); }
+  private last = { x: 1e9, z: 1e9, dx: 0, dz: 1, far: 0, hi: 0, t: 0 };
   private half: number;
   private extra: { x: number; z: number; r: number; h: number }[] = [];
 
@@ -114,47 +119,49 @@ export class Forest {
     mat.color.setScalar(1.3);
     const geoHi = [conifer(11, 13, 11), conifer(12, 12, 29), conifer(8, 13, 53, true)];
     const geoMid = [conifer(6, 8, 5), conifer(6, 8, 17), conifer(5, 8, 41, true)];
-    const geoLo = [conifer(3, 5, 7), conifer(3, 5, 7), conifer(3, 6, 9, true)];
-    const nc = (hf.half * 2) / this.chunkSize;
-    // par tronçon et par espèce
-    const buckets: number[][][] = Array.from({ length: nc * nc }, () => [[], [], []]);
-    for (let i = 0; i < this.count; i++) {
-      const cx = Math.min(nc - 1, Math.max(0, Math.floor((this.xs[i] + hf.half) / this.chunkSize)));
-      const cz = Math.min(nc - 1, Math.max(0, Math.floor((this.zs[i] + hf.half) / this.chunkSize)));
+    const geoLo = [conifer(2, 5, 7, false, true), conifer(2, 5, 13, false, true), conifer(2, 5, 9, true, true)];
+    // données par arbre : matrice, couleur, espèce ; liste par carré de 128 m pour les requêtes de distance
+    const n = this.count;
+    this.mats = new Float32Array(n * 16); this.cols = new Float32Array(n * 3); this.species = new Uint8Array(n);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
+    const up = new THREE.Vector3(0, 1, 0);
+    this.cells = Array.from({ length: this.nCell * this.nCell }, () => [] as number[]);
+    for (let i = 0; i < n; i++) {
       const y = hf.height(this.xs[i], this.zs[i]);
       // pins cembro surtout en altitude
       const pinChance = Math.min(0.6, Math.max(0, (y - 1850) / 400));
       const sp = ((i * 2654435761) >>> 0) % 1000 / 1000 < pinChance ? 2 : (i % 2);
-      buckets[cz * nc + cx][sp].push(i);
+      this.species[i] = sp;
+      const h = this.hs[i];
+      const w = h * (sp === 2 ? 0.62 : 0.5) * (1 + ((i * 7919) % 100) / 100 * 0.35);
+      p.set(this.xs[i], y - 0.5, this.zs[i]);
+      q.setFromAxisAngle(up, (i * 2.399) % (Math.PI * 2));
+      s.set(w, h, w);
+      m4.compose(p, q, s).toArray(this.mats, i * 16);
+      const v = 0.82 + ((i * 104729) % 100) / 100 * 0.32;
+      col.setRGB(v, v * (0.95 + ((i * 13) % 10) / 90), v * 0.98).toArray(this.cols, i * 3);
+      const cx = Math.min(this.nCell - 1, Math.max(0, Math.floor((this.xs[i] + hf.half) / this.cellSize)));
+      const cz = Math.min(this.nCell - 1, Math.max(0, Math.floor((this.zs[i] + hf.half) / this.cellSize)));
+      this.cells[cz * this.nCell + cx].push(i);
     }
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
-    const up = new THREE.Vector3(0, 1, 0);
-    buckets.forEach((species, bi) => {
-      const cx = bi % nc, cz = Math.floor(bi / nc);
-      species.forEach((ids, spi) => {
-        if (!ids.length) return;
-        const hi = new THREE.InstancedMesh(geoHi[spi], mat, ids.length);
-        const mid = new THREE.InstancedMesh(geoMid[spi], mat, ids.length);
-        const lo = new THREE.InstancedMesh(geoLo[spi], mat, ids.length);
-        ids.forEach((id, k) => {
-          const h = this.hs[id];
-          const w = h * (spi === 2 ? 0.62 : 0.5) * (1 + ((id * 7919) % 100) / 100 * 0.35);
-          p.set(this.xs[id], hf.height(this.xs[id], this.zs[id]) - 0.5, this.zs[id]);
-          q.setFromAxisAngle(up, (id * 2.399) % (Math.PI * 2));
-          s.set(w, h, w);
-          m4.compose(p, q, s);
-          hi.setMatrixAt(k, m4); mid.setMatrixAt(k, m4); lo.setMatrixAt(k, m4);
-          const v = 0.82 + ((id * 104729) % 100) / 100 * 0.32;
-          col.setRGB(v, v * (0.95 + ((id * 13) % 10) / 90), v * 0.98);
-          hi.setColorAt(k, col); mid.setColorAt(k, col); lo.setColorAt(k, col);
-        });
-        hi.castShadow = true; hi.receiveShadow = true;
-        mid.castShadow = true; mid.receiveShadow = true;
-        lo.castShadow = false; lo.receiveShadow = false;
-        for (const m of [hi, mid, lo]) { m.computeBoundingSphere(); m.visible = false; this.group.add(m); }
-        this.chunks.push({ hi, mid, lo, cx, cz });
-      });
-    });
+    // un maillage instancié par espèce et par niveau de détail, rempli selon la caméra
+    const caps = [2500, 9000, 30000];
+    const geos = [geoHi, geoMid, geoLo];
+    for (let lod = 0; lod < 3; lod++) {
+      const row: THREE.InstancedMesh[] = [];
+      for (let sp = 0; sp < 3; sp++) {
+        const im = new THREE.InstancedMesh(geos[lod][sp], mat, caps[lod]);
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        im.setColorAt(0, col.setRGB(1, 1, 1));
+        im.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+        im.count = 0; im.frustumCulled = false;
+        im.castShadow = lod === 0; im.receiveShadow = lod === 0;
+        this.group.add(im);
+        row.push(im);
+      }
+      this.meshes.push(row);
+      this.caps.push(caps[lod]);
+    }
   }
 
   private key(i: number, j: number) { return (i + 4096) * 8192 + (j + 4096); }
@@ -177,15 +184,60 @@ export class Forest {
   oh(id: number) { return id < this.count ? this.hs[id] : this.extra[id - this.count].h; }
 
   /** retire les arbres trop proches d'une ligne (piste de funiculaire…) */
-  update(cam: THREE.Vector3, farDist = 2000, hiDist = 330) {
-    for (const c of this.chunks) {
-      const x = -this.half + (c.cx + 0.5) * this.chunkSize, z = -this.half + (c.cz + 0.5) * this.chunkSize;
-      const d = Math.max(0, Math.hypot(x - cam.x, z - cam.z) - this.chunkSize * 0.7);
-      c.hi.visible = d < hiDist * 0.55;
-      c.mid.visible = !c.hi.visible && d < hiDist * 1.25;
-      c.lo.visible = !c.hi.visible && !c.mid.visible && d < farDist;
+  /**
+   * Choix arbre par arbre : détaillé (avec ombres) tout autour du joueur, simplifié puis très simplifié
+   * plus loin, et rien derrière la caméra au-delà de 30 m. Recalcul seulement quand la caméra a bougé.
+   */
+  update(cam: THREE.Vector3, farDist = 2000, hiDist = 330, dir?: THREE.Vector3) {
+    const L = this.last;
+    let dx = dir ? dir.x : L.dx, dz = dir ? dir.z : L.dz;
+    const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    const now = performance.now();
+    const moved = Math.hypot(cam.x - L.x, cam.z - L.z) > 6 || dx * L.dx + dz * L.dz < 0.985 || farDist !== L.far || hiDist !== L.hi;
+    if (!moved && now - L.t < 1500) return;
+    Object.assign(L, { x: cam.x, z: cam.z, dx, dz, far: farDist, hi: hiDist, t: now });
+    const rHi = hiDist * 0.36, rMid = hiDist, rLo = farDist;
+    const rHi2 = rHi * rHi, rMid2 = rMid * rMid, rLo2 = rLo * rLo;
+    const cosLim = -0.3;   // demi-angle ~107° : large marge pour les rotations rapides de caméra
+    const cnt = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    const N = this.nCell, cs = this.cellSize, h = this.half;
+    const c0 = Math.max(0, Math.floor((cam.x - rLo + h) / cs)), c1 = Math.min(N - 1, Math.floor((cam.x + rLo + h) / cs));
+    const r0 = Math.max(0, Math.floor((cam.z - rLo + h) / cs)), r1 = Math.min(N - 1, Math.floor((cam.z + rLo + h) / cs));
+    for (let cz = r0; cz <= r1; cz++) for (let cx = c0; cx <= c1; cx++) {
+      // carré entièrement derrière la caméra et hors de l'anneau détaillé : ignoré
+      const ccx = -h + (cx + 0.5) * cs - cam.x, ccz = -h + (cz + 0.5) * cs - cam.z;
+      const cd = Math.hypot(ccx, ccz);
+      if (cd - cs * 0.71 > rLo) continue;
+      if (cd > rHi + cs && (ccx * dx + ccz * dz) / cd < cosLim - 0.35) continue;
+      for (const i of this.cells[cz * N + cx]) {
+        const tx = this.xs[i] - cam.x, tz = this.zs[i] - cam.z;
+        const d2 = tx * tx + tz * tz;
+        if (d2 > rLo2) continue;
+        let lod: number;
+        if (d2 < rHi2) lod = 0;
+        else {
+          if (d2 > 900 && (tx * dx + tz * dz) < cosLim * Math.sqrt(d2)) continue;
+          lod = d2 < rMid2 ? 1 : 2;
+        }
+        const sp = this.species[i];
+        const k = cnt[lod][sp];
+        if (k >= this.caps[lod]) continue;
+        const im = this.meshes[lod][sp];
+        (im.instanceMatrix.array as Float32Array).set(this.mats.subarray(i * 16, i * 16 + 16), k * 16);
+        (im.instanceColor!.array as Float32Array).set(this.cols.subarray(i * 3, i * 3 + 3), k * 3);
+        cnt[lod][sp] = k + 1;
+      }
+    }
+    for (let lod = 0; lod < 3; lod++) for (let sp = 0; sp < 3; sp++) {
+      const im = this.meshes[lod][sp], c = cnt[lod][sp];
+      im.count = c;
+      im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, c * 16); im.instanceMatrix.needsUpdate = true;
+      im.instanceColor!.clearUpdateRanges(); im.instanceColor!.addUpdateRange(0, c * 3); im.instanceColor!.needsUpdate = true;
     }
   }
+
+  /** nombre d'arbres dessinés par niveau (diagnostic) */
+  stats() { return this.meshes.map(r => r.reduce((a, m) => a + m.count, 0)); }
 
   /** obstacle le plus "pénétré" autour d'un point : indice, distance, rayon */
   nearest(x: number, z: number, r: number): { i: number; d: number; rad: number } {

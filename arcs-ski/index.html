@@ -80,6 +80,9 @@
   #loading .ctl-mini { margin-top: 26px; font-size: 13px; opacity: .85; line-height: 1.9; }
   #loading .credit { position: absolute; bottom: 12px; font-size: 11px; opacity: .6; }
   @media (max-width: 700px) { #keys { display: none; } #minimap { width: 130px; height: 130px; } #speed { font-size: 44px; } }
+  /* vignettage léger sans post-traitement (qualités Moyenne et Basse) */
+  body.css-grade #game::after { content: ''; position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(10,20,40,0.22) 100%); }
 </style>
 </head>
 <body>

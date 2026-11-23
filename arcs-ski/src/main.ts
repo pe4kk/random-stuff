@@ -80,19 +80,19 @@ function build(data: GameData) {
   const mask = new MaskField(data.mask, meta.coreHalf);
 
   // ------------------------------------------------------- rendu
-  const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.56;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;   // ombres douces (plus coûteuses) seulement en qualité Haute
   $('game').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   const fogCol = new THREE.Color(0xa9bdd6);
   scene.fog = new THREE.FogExp2(fogCol, 0.000024);
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 160000);
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 160000);
 
   // soleil d'après-midi au sud-ouest (éclaire les pentes d'Arc 1600)
   const sunDir = new THREE.Vector3(-0.62, 0.66, 0.42).normalize();
@@ -116,7 +116,6 @@ function build(data: GameData) {
   const coreMat = makeSnowMaterial('core', maskTex, meta.coreHalf);
   (coreMat as any).snowUniforms.uGroom.value = makeGroomTexture(data.features.pistes, meta.coreHalf);
   const core = new CoreTerrain(hf, coreMat);
-  core.chunks.forEach(c => (c.mesh.castShadow = true));
   scene.add(core.group);
 
   const midTex = new THREE.Texture(data.midForest);
@@ -403,9 +402,9 @@ function build(data: GameData) {
 
   // ------------------------------------------------------- qualité graphique
   const QUALITY = [
-    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 4096, hi: 330, lo: 1000 },
-    { name: 'Moyenne', ratio: 1, shadow: 2048, hi: 240, lo: 750 },
-    { name: 'Basse', ratio: 0.8, shadow: 1024, hi: 150, lo: 500 },
+    { name: 'Haute', ratio: Math.min(window.devicePixelRatio, 1.5), shadow: 4096, hi: 330, lo: 1000, lod: [520, 1300], post: true, terrainShadow: true, crowd: 110, veh: 650 },
+    { name: 'Moyenne', ratio: 1, shadow: 2048, hi: 240, lo: 650, lod: [260, 800], post: false, terrainShadow: false, crowd: 80, veh: 420 },
+    { name: 'Basse', ratio: 0.75, shadow: 1024, hi: 160, lo: 480, lod: [220, 600], post: false, terrainShadow: false, crowd: 55, veh: 280 },
   ];
   let quality = 1;
   try { const sq = localStorage.getItem('arcs-quality'); if (sq !== null) { const q = Number(sq); if (q >= 0 && q < 3) quality = q; } } catch { /* ignore */ }
@@ -417,8 +416,17 @@ function build(data: GameData) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (composer) { composer.setPixelRatio(Q.ratio); composer.setSize(window.innerWidth, window.innerHeight); }
     sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+    const st = q === 0 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    if (renderer.shadowMap.type !== st) {
+      renderer.shadowMap.type = st;
+      scene.traverse(o => { const m = (o as THREE.Mesh).material; if (m) (Array.isArray(m) ? m : [m]).forEach(x => (x.needsUpdate = true)); });
+    }
     if (sun.shadow.map) { sun.shadow.map.dispose(); (sun.shadow as any).map = null; }
     (coreMat as any).snowUniforms.uTreeFade.value.set(Q.lo * 0.75, Q.lo * 1.05);
+    core.lodDist = Q.lod;
+    core.chunks.forEach(c => (c.mesh.castShadow = Q.terrainShadow));
+    crowd.nearDist = Q.crowd;
+    document.body.classList.toggle('css-grade', !(Q.post && composer));
     try { localStorage.setItem('arcs-quality', String(q)); } catch { /* ignore */ }
     if (announce) message(`Qualité graphique : ${Q.name}`, 1.6);
   }
@@ -461,8 +469,15 @@ function build(data: GameData) {
 
   if (mb) spawnAtLift(mb); else skier.place(0, 0, 0);
 
+  // mesures de performance (touche F, et banc d'essai __game.perf)
+  const camFwd = new THREE.Vector3();
+  const perfPx = new Uint8Array(4);
+  const perf = { cpu: 0, submit: 0, gpu: 0, calls: 0, tris: 0, finish: false, last: 0 };
+  renderer.info.autoReset = false;
   function frame() {
     requestAnimationFrame(frame);
+    const tf0 = performance.now();
+    renderer.info.reset();
     const dt = Math.min(0.05, clock.getDelta());
     input.poll();
 
@@ -483,7 +498,7 @@ function build(data: GameData) {
     if (input.was('KeyG')) { autoQ = false; applyQuality((quality + 1) % 3); }
     if (input.was('KeyF')) { fpsShown = !fpsShown; fpsEl.style.display = fpsShown ? 'block' : 'none'; }
     fpsAcc += dt; fpsN++;
-    if (fpsAcc > 0.5) { fpsEl.textContent = `${Math.round(fpsN / fpsAcc)} i/s · ${QUALITY[quality].name}`; fpsAcc = 0; fpsN = 0; }
+    if (fpsAcc > 0.5) { fpsEl.textContent = `${Math.round(fpsN / fpsAcc)} i/s · ${QUALITY[quality].name} · ${(perf.tris / 1e6).toFixed(2)} M triangles · ${perf.calls} dessins · calcul ${perf.cpu.toFixed(1)} ms`; fpsAcc = 0; fpsN = 0; }
     // ajustement automatique de la qualité dans les premières secondes de jeu
     if (autoQ && started) {
       autoT += dt; autoFrames++;
@@ -533,7 +548,7 @@ function build(data: GameData) {
     }
     spray.update(dt);
 
-    for (const l of lifts) l.update(elapsed, camera.position);
+    for (const l of lifts) l.update(elapsed, camera.position, QUALITY[quality].veh);
     if (funi) funi.update(elapsed);
     if (!(paused || tpOpen || map.open)) crowd.update(dt, camera.position, Math.max(1, Math.round(dt / (1 / 60))), Math.min(dt, 0.05) / Math.max(1, Math.round(dt / (1 / 60))));
     (sky.material as THREE.ShaderMaterial).uniforms.uTime.value = elapsed;
@@ -547,7 +562,7 @@ function build(data: GameData) {
       camera.fov = 55; camera.updateProjectionMatrix();
     } else updateCamera(dt);
     core.update(camera.position);
-    forest.update(camera.position, QUALITY[quality].lo, QUALITY[quality].hi);
+    forest.update(camera.position, QUALITY[quality].lo, QUALITY[quality].hi, camera.getWorldDirection(camFwd));
     (rocks as any).updateRocks(camera.position, QUALITY[quality].lo);
     (coreMat as any).snowUniforms.uTime.value = elapsed;
     (coreMat as any).snowUniforms.uSunDir.value.copy(sunDir);
@@ -582,7 +597,14 @@ function build(data: GameData) {
     else audio.update(skier.speed, skier.carve, skier.skid, skier.grounded, skier.crashT > 0);
     audio.ambience(mb ? Math.hypot(camera.position.x - mb.bottom.x, camera.position.z - mb.bottom.z) : 9999, frozen);
 
-    if (composer && quality < 2) composer.render(); else renderer.render(scene, camera);
+    const tf1 = performance.now();
+    if (composer && QUALITY[quality].post) composer.render(); else renderer.render(scene, camera);
+    const tf2 = performance.now();
+    if (perf.finish) { const gl = renderer.getContext(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, perfPx); }
+    const tf3 = performance.now();
+    const a = 0.1;
+    perf.cpu += (tf1 - tf0 - perf.cpu) * a; perf.submit += (tf2 - tf1 - perf.submit) * a; perf.gpu += (tf3 - tf2 - perf.gpu) * a;
+    perf.calls = renderer.info.render.calls; perf.tris = renderer.info.render.triangles; perf.last = tf3 - tf1;
     input.endFrame();
   }
 
@@ -615,7 +637,7 @@ function build(data: GameData) {
   };
   // test automatique : ?auto=1 lance directement
   if (new URLSearchParams(location.search).has('auto')) go.click();
-  (window as any).__game = { skier, camera, hf, lifts, routes, crowd, forest, toggleMap, togglePause, setCam: (m: number) => { camMode = m; camSnap = true; },
+  (window as any).__game = { skier, camera, hf, lifts, routes, crowd, forest, renderer, scene, sun, perf, core, setQuality: (q: number) => { autoQ = false; applyQuality(q, false); }, toggleMap, togglePause, setCam: (m: number) => { camMode = m; camSnap = true; },
     debugCam: (p: number[] | null, l?: number[]) => { debugCam = p ? { p: new THREE.Vector3(...p), l: new THREE.Vector3(...l!) } : null; },
     place: (x: number, z: number, yaw: number) => { skier.place(x, z, yaw); core.warm(skier.pos); camSnap = true; } };
   frame();

@@ -335,7 +335,7 @@ varying vec4 vCat; varying vec3 vRest;`)
   /** applique la pose du squelette pilote (repère local de d.root) */
   apply(d: Driver, lean: number) {
     const root = d.root;
-    root.updateMatrixWorld(true);
+    root.updateMatrixWorld(true);   // pilote + squelette, une seule fois
     _inv.copy(root.matrixWorld).invert();
     const rl = (o: THREE.Object3D, q?: THREE.Quaternion, p?: THREE.Vector3) => {
       _m.multiplyMatrices(_inv, o.matrixWorld).decompose(p ?? _p, q ?? _q, _s);
@@ -348,12 +348,13 @@ varying vec4 vCat; varying vec3 vRest;`)
     const setQ = (name: string, qd: THREE.Quaternion) => {
       const bone = b[name]; if (!bone) return;
       const parent = bone.parent!;
+      // seule la chaîne des parents est mise à jour (pas tout le sous-arbre) : beaucoup moins de calcul
+      parent.updateWorldMatrix(true, false);
       _m.multiplyMatrices(_inv, parent.matrixWorld).decompose(_p, _q2, _s);
       bone.quaternion.copy(_q2.invert().multiply(qd));
-      bone.updateMatrixWorld(true);
     };
     const restQ = (name: string) => rest.get(name)!.q;
-    const jointRL = (name: string, out: THREE.Vector3) => { _m.multiplyMatrices(_inv, b[name].matrixWorld); return out.setFromMatrixPosition(_m); };
+    const jointRL = (name: string, out: THREE.Vector3) => { b[name].updateWorldMatrix(true, false); _m.multiplyMatrices(_inv, b[name].matrixWorld); return out.setFromMatrixPosition(_m); };
     const aim = (name: string, child: string, target: THREE.Vector3, restPole: THREE.Vector3, pole: THREE.Vector3) => {
       const r = rest.get(name)!, rc = rest.get(child)!;
       const fr = frame(_c.copy(rc.p).sub(r.p), restPole, new THREE.Quaternion());
@@ -366,7 +367,7 @@ varying vec4 vCat; varying vec3 vRest;`)
     const pelvis = b['pelvis'];
     {
       const parent = pelvis.parent!;
-      parent.updateMatrixWorld(true);
+      parent.updateWorldMatrix(true, false);
       _m.multiplyMatrices(_inv, parent.matrixWorld).invert();
       pelvis.position.copy(pHips).applyMatrix4(_m);
       setQ('pelvis', _q.copy(qHips).multiply(restQ('pelvis')));

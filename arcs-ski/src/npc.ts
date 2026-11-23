@@ -168,6 +168,7 @@ export class Crowd {
     e.stuck = 0;
   }
 
+  nearDist = 110;
   private _l = new THREE.Vector3(); private _r = new THREE.Vector3(); private _s = new THREE.Vector3();
 
   update(dt: number, cam: THREE.Vector3, steps: number, stepDt: number) {
@@ -189,7 +190,7 @@ export class Crowd {
       const model = e.sk.model;
       const dc = Math.hypot(e.sk.pos.x - cam.x, e.sk.pos.z - cam.z);
       // détaillé de près, silhouette instanciée au loin (un seul appel de dessin)
-      const near = dc < 110;
+      const near = dc < this.nearDist;
       model.root.visible = near;
       if (!near && dc < 600 && this.far) {
         this.m4.makeRotationY(e.sk.yaw).setPosition(e.sk.pos.x, e.sk.pos.y, e.sk.pos.z);

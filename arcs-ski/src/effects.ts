@@ -53,7 +53,8 @@ export function makeSky(sunDir: THREE.Vector3): THREE.Mesh {
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(150000, 32, 16), mat);
   m.frustumCulled = false;
-  m.renderOrder = -1;
+  // dessiné après le relief : seuls les pixels de ciel réellement visibles sont calculés
+  m.renderOrder = 1000;
   return m;
 }
 

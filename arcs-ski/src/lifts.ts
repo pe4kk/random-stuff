@@ -7,7 +7,7 @@ import { mergeStatic } from './merge';
 export interface LiftRuntime {
   lift: Lift;
   top: THREE.Vector3; bottom: THREE.Vector3; topDir: THREE.Vector3;
-  update(t: number, cam: THREE.Vector3): void;
+  update(t: number, cam: THREE.Vector3, vehDist?: number): void;
 }
 
 const TYPE_LABEL: Record<string, string> = { chair_lift: 'TÉLÉSIÈGE', drag_lift: 'TÉLÉSKI', platter: 'TÉLÉSKI', 't-bar': 'TÉLÉSKI', gondola: 'TÉLÉCABINE', cable_car: 'TÉLÉPHÉRIQUE' };
@@ -255,18 +255,22 @@ export function makeLifts(lifts: Lift[], hf: HeightField, scene: THREE.Object3D,
     scene.add(g);
     out.push({
       lift, top, bottom, topDir,
-      update(t: number, cam: THREE.Vector3) {
+      update(t: number, cam: THREE.Vector3, vehDist = 450) {
         const visible = cam.distanceTo(center) < radius + 1800;
         g.visible = visible;
         if (!visible) return;
-        let nr = 0;
+        // sièges et passagers seulement près de la caméra (au-delà : 1 ou 2 pixels, inutile de les dessiner)
+        const cd2 = vehDist * vehDist, rd2 = cd2 * 0.45;
+        let nr = 0, nc = 0;
         for (let i = 0; i < n; i++) {
           const s = (((t * speed + i * spacing) % total) + total) % total;
           const yaw = sample(s, p);
+          const d2 = p.distanceToSquared(cam);
+          if (d2 > cd2) continue;
           q.setFromAxisAngle(up, yaw);
           m4.compose(p, q, one);
-          chairs.setMatrixAt(i, m4);
-          if (riders && s > 8 && s < upLen - 8) {
+          chairs.setMatrixAt(nc++, m4);
+          if (riders && d2 < rd2 && s > 8 && s < upLen - 8) {
             riderSeats[i].forEach((sx, j) => {
               m5.makeTranslation(sx, 0, 0).premultiply(m4);
               riders.setMatrixAt(nr, m5);
@@ -275,6 +279,7 @@ export function makeLifts(lifts: Lift[], hf: HeightField, scene: THREE.Object3D,
             });
           }
         }
+        chairs.count = nc;
         chairs.instanceMatrix.needsUpdate = true;
         if (riders) { riders.count = nr; riders.instanceMatrix.needsUpdate = true; if (riders.instanceColor) riders.instanceColor.needsUpdate = true; }
       },

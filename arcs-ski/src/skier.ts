@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HeightField, MaskField } from './data';
 import { Forest } from './trees';
 import { SkinRig, skinAsset } from './skinrig';
+import { mergeStatic } from './merge';
 
 export interface SkiInput { steer: number; tuck: number; brake: number; jump: boolean; push: number }
 
@@ -77,6 +78,7 @@ export class SkierModel {
       const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.085, 0.27, 12), bootMat); cuff.position.set(0, 0.26, -0.035); cuff.rotation.x = 0.25; cuff.castShadow = true; ski.add(cuff);
       if (!lite) for (const by of [0.17, 0.27, 0.35]) { const bk = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.022, 0.06), buckle); bk.position.set(sx < 0 ? -0.075 : 0.075, by, 0.0 - (by - 0.17) * 0.2); ski.add(bk); }
       ski.position.x = sx;
+      mergeStatic(ski);   // moins d'appels de dessin par skieur
       this.lean.add(ski); this.skis.push(ski);
     }
     this.lean.add(this.hips);
@@ -106,10 +108,12 @@ export class SkierModel {
       const hs = new THREE.Group(); hs.scale.setScalar(dm.headR / 0.118);
       const hg = new THREE.SphereGeometry(0.128, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.6);
       const hm = new THREE.Mesh(hg, helmet); hm.position.set(0, 0.012, -0.008); hm.castShadow = true; hs.add(hm);
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.16), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 })); vent.position.set(0, 0.138, -0.01); hs.add(vent);
+      const darkM = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5 });
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.16), darkM); vent.position.set(0, 0.138, -0.01); hs.add(vent);
       const gm = new THREE.Mesh(new THREE.CylinderGeometry(0.122, 0.122, 0.058, 18, 1, true, -1.15, 2.3), goggle); gm.position.set(0, -0.012, 0.004); hs.add(gm);
-      const frameM = new THREE.Mesh(new THREE.TorusGeometry(0.122, 0.006, 4, 24, 2.3), new THREE.MeshStandardMaterial({ color: 0x111111 })); frameM.rotation.set(Math.PI / 2, 0, Math.PI / 2 - 1.15 - 0.0); frameM.position.y = -0.012 + 0.03; hs.add(frameM);
-      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 18, 1, true, 1.15, Math.PI * 2 - 2.3), new THREE.MeshStandardMaterial({ color: 0x111111 })); strap.position.y = -0.012; hs.add(strap);
+      const frameM = new THREE.Mesh(new THREE.TorusGeometry(0.122, 0.006, 4, 24, 2.3), darkM); frameM.rotation.set(Math.PI / 2, 0, Math.PI / 2 - 1.15 - 0.0); frameM.position.y = -0.012 + 0.03; hs.add(frameM);
+      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 18, 1, true, 1.15, Math.PI * 2 - 2.3), darkM); strap.position.y = -0.012; hs.add(strap);
+      mergeStatic(hs);
       rig.headSocket.add(hs);
       return;
     }
@@ -154,6 +158,7 @@ export class SkierModel {
     pm.position.y = -0.6; pm.castShadow = true; pole.add(pm);
     const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 12), glove);
     basket.position.y = -1.07; pole.add(basket);
+    mergeStatic(pole);
     return pole;
   }
 
