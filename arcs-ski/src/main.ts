@@ -222,7 +222,7 @@ function build(data: GameData) {
       target = h.clone().addScaledVector(head, -0.2); look = h.clone().addScaledVector(head, 6).add(new THREE.Vector3(0, -4.6, 0));
     } else {
       let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
-      let height = (camMode === 0 ? 3.6 : 8) * camZoom;
+      let height = (camMode === 0 ? 4.8 : 10) * camZoom;
       // ne pas se retrouver dans un sapin : on rapproche la caméra
       const full = dist;
       for (let t = 2; t <= full; t += 1) {
