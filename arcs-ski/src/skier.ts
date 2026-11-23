@@ -7,6 +7,8 @@ import { mergeStatic } from './merge';
 export interface SkiInput { steer: number; tuck: number; brake: number; jump: boolean; push: number }
 
 const G = 9.81;
+/** réglage de jeu : la pente « tire » plus que dans la réalité, pour prendre de la vitesse vite */
+const SLOPE_BOOST = 1.45;
 const _v = new THREE.Vector3(), _d = new THREE.Vector3(), _l = new THREE.Vector3(), _a = new THREE.Vector3();
 const _n = { x: 0, y: 1, z: 0 };
 
@@ -267,7 +269,7 @@ export class Skier {
     const hf = this.hf;
     this.tuck += (inp.tuck - this.tuck) * Math.min(1, dt * 6);
     this.brake += (inp.brake - this.brake) * Math.min(1, dt * 8);
-    this.push += ((inp.push > 0 && this.speed < 7 ? 1 : 0) - this.push) * Math.min(1, dt * 5);
+    this.push += ((inp.push > 0 && this.speed < 11 ? 1 : 0) - this.push) * Math.min(1, dt * 5);
 
     if (this.crashT > 0) {
       this.crashT -= dt;
@@ -316,7 +318,7 @@ export class Skier {
 
       // forces (par unité de masse)
       const N = G * n.y + Math.max(0, this.compress) * 2;
-      _a.set(0, -G, 0).addScaledVector(n, G * n.y);     // gravité tangentielle
+      _a.set(0, -G, 0).addScaledVector(n, G * n.y).multiplyScalar(SLOPE_BOOST);     // gravité tangentielle
       // adhérence latérale (carres)
       const powder = 1 - onP;
       const grip = (1.25 + 0.35 * absS) * (1 - 0.3 * powder) * (1 - 0.65 * this.brake) * N;
@@ -326,15 +328,15 @@ export class Skier {
       if (need > grip) { skid = Math.min(1, (need - grip) / (grip + 1)); aLat = Math.sign(aLat) * grip; }
       _a.addScaledVector(_l, aLat);
       // frottements
-      const mu = 0.045 + 0.035 * powder + 0.15 * this.brake + 0.12 * skid;
-      const cda = 0.6 - 0.28 * this.tuck + 0.25 * this.brake;
-      const drag = mu * N + (0.5 * 1.2 * cda / 80) * speed * speed + powder * (0.01 * speed * speed + 0.25 * speed);
+      const mu = 0.022 + 0.03 * powder + 0.15 * this.brake + 0.12 * skid;
+      const cda = 0.55 - 0.3 * this.tuck + 0.25 * this.brake;
+      const drag = mu * N + (0.5 * 1.2 * cda / 42) * speed * speed + powder * (0.01 * speed * speed + 0.25 * speed);
       if (speed > 0.01) {
         const dec = Math.min(drag, speed / dt);
         _a.addScaledVector(v, -dec / speed);
       }
       // pas de patineur / poussée sur les bâtons
-      if (inp.push > 0 && speed < 7) _a.addScaledVector(_d, 2.6 * inp.push * (1 - speed / 7));
+      if (inp.push > 0 && speed < 11) _a.addScaledVector(_d, 4.2 * inp.push * (1 - speed / 11));
       // freinage fort : chasse-neige / dérapage
       if (this.brake > 0.05 && speed > 0.01) _a.addScaledVector(v, -Math.min(this.brake * 5.5, speed / dt) / speed);
 
@@ -352,7 +354,7 @@ export class Skier {
       if (this.edgeLoss > 0.15 && !this.warned) { this.warned = true; this.events.push('edgewarn'); }
       if (this.edgeLoss > 0.08) this.leanAngle += (Math.random() - 0.5) * 0.12;
       if (this.edgeLoss === 0) this.warned = false;
-      if (this.edgeLoss > 0.6 && n.y < 0.975) { this.edgeLoss = 0; this.warned = false; this.crash('Perte de carre !'); }
+      if (this.edgeLoss > 0.75 && n.y < 0.975) { this.edgeLoss = 0; this.warned = false; this.crash('Perte de carre !'); }
 
       // inclinaison visuelle = accélération latérale
       const latAcc = vf * yawRate;

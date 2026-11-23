@@ -45,6 +45,7 @@ s.place(path[0][0], path[0][1], Math.atan2(d0[0], d0[1]));
 let idx = 0, t = 0, vmax = 0, crashes = 0, air = 0, offp = 0, skidT = 0;
 const dt = 1 / 120;
 let lastLog = 0;
+let t30 = 0, t50 = 0, t70 = 0;
 while (t < 900) {
   // point cible à ~ 12 m + v*0.8 devant
   while (idx < path.length - 1 && Math.hypot(path[idx][0]-s.pos.x, path[idx][1]-s.pos.z) < 8 + s.speed * 0.6) idx++;
@@ -59,10 +60,12 @@ while (t < 900) {
   s.step(dt, { steer, tuck, brake, jump: false, push: s.speed < 3 ? 1 : 0 });
   if (!before && s.crashT > 0) { crashes++; console.log(`  chute à t=${t.toFixed(1)} (${s.crashMsg}) v=${(s.speed*3.6).toFixed(0)} pos=${s.pos.x.toFixed(0)},${s.pos.z.toFixed(0)} idx=${idx}`); }
   s.events.length = 0;
+  if (!t30 && s.speed > 30 / 3.6) t30 = t; if (!t50 && s.speed > 50 / 3.6) t50 = t; if (!t70 && s.speed > 70 / 3.6) t70 = t;
   vmax = Math.max(vmax, s.speed); if (!s.grounded) air += dt; if (s.onPiste < 0.3) offp += dt; if (s.skid > 0.3) skidT += dt;
   t += dt;
   if (t - lastLog > 15) { lastLog = t; console.log(`  t=${t.toFixed(0)}s v=${(s.speed*3.6).toFixed(0)} km/h alt=${s.pos.y.toFixed(0)} idx=${idx}/${path.length} piste=${s.onPiste.toFixed(2)}`); }
   if (idx >= path.length - 1 && Math.hypot(path[idx][0]-s.pos.x, path[idx][1]-s.pos.z) < 15) break;
   if (s.speed < 0.3 && t > 20 && s.crashT <= 0) { /* bloqué */ }
 }
+console.log(`[${mode}] 0→30 km/h ${t30.toFixed(1)} s, 0→50 ${t50.toFixed(1)} s, 0→70 ${t70.toFixed(1)} s`);
 console.log(`[${mode}] temps ${t.toFixed(1)} s, vmax ${(vmax*3.6).toFixed(0)} km/h, moy ${(len/t*3.6).toFixed(0)} km/h, chutes ${crashes}, en l'air ${air.toFixed(1)} s, hors-piste ${offp.toFixed(1)} s, dérapage ${skidT.toFixed(1)} s, arbres ${forest.count}`);
