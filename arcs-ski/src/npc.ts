@@ -189,7 +189,7 @@ export class Crowd {
       const model = e.sk.model;
       const dc = Math.hypot(e.sk.pos.x - cam.x, e.sk.pos.z - cam.z);
       // détaillé de près, silhouette instanciée au loin (un seul appel de dessin)
-      const near = dc < 70;
+      const near = dc < 110;
       model.root.visible = near;
       if (!near && dc < 600 && this.far) {
         this.m4.makeRotationY(e.sk.yaw).setPosition(e.sk.pos.x, e.sk.pos.y, e.sk.pos.z);
@@ -198,7 +198,7 @@ export class Crowd {
       const shadow = dc < 60;
       if (shadow !== (e as any).shadow) { (e as any).shadow = shadow; model.root.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = shadow; }); }
       if (dc < 450) {
-        e.sk.updateModel(dt);
+        e.sk.updateModel(dt, near);
         if (e.sk.grounded && e.sk.crashT <= 0 && e.sk.speed > 1) {
           const root = model.root; root.updateMatrixWorld();
           this._l.set(-0.13, 0, -0.3).applyMatrix4(root.matrixWorld); this._l.y = this.hf.height(this._l.x, this._l.z);

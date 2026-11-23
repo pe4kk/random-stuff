@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HeightField, MaskField } from './data';
 import { Forest } from './trees';
+import { SkinRig, skinAsset } from './skinrig';
 
 export interface SkiInput { steer: number; tuck: number; brake: number; jump: boolean; push: number }
 
@@ -41,13 +42,17 @@ export class SkierModel {
   torso = new THREE.Group();
   head = new THREE.Group();
   legs: { thigh: THREE.Group; shin: THREE.Group }[] = [];
-  arms: { upper: THREE.Group; lower: THREE.Group; pole: THREE.Group }[] = [];
+  arms: { upper: THREE.Group; lower: THREE.Group; pole: THREE.Group; wrist: THREE.Group }[] = [];
   skis: THREE.Group[] = [];
-  readonly L = 0.46;
+  rig: SkinRig | null = null;
+  private body = new THREE.Group();   // tout ce qui est masqué en vue subjective
+  private Lt = 0.46; private Ls = 0.46; private ankleY = 0.24;
+  private _hand = new THREE.Vector3();
 
   constructor(colors: { jacket?: number; pants?: number; helmet?: number; ski?: number } = {}, lite = false) {
-    const jacket = new THREE.MeshStandardMaterial({ color: colors.jacket ?? 0xd8262c, roughness: 0.55 });
-    const jacket2 = new THREE.MeshStandardMaterial({ color: new THREE.Color(colors.jacket ?? 0xd8262c).multiplyScalar(0.6), roughness: 0.6 });
+    const jc = colors.jacket ?? 0xd8262c;
+    const jacket = new THREE.MeshStandardMaterial({ color: jc, roughness: 0.55 });
+    const jacket2 = new THREE.MeshStandardMaterial({ color: new THREE.Color(jc).multiplyScalar(0.6), roughness: 0.6 });
     const pants = new THREE.MeshStandardMaterial({ color: colors.pants ?? 0x1b1f2a, roughness: 0.75 });
     const helmet = new THREE.MeshStandardMaterial({ color: colors.helmet ?? 0xf5f5f5, roughness: 0.25, metalness: 0.1 });
     const goggle = new THREE.MeshStandardMaterial({ color: 0xff9a1c, roughness: 0.05, metalness: 0.9, emissive: 0x2a1000 });
@@ -57,6 +62,8 @@ export class SkierModel {
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xc7ccd4, roughness: 0.25, metalness: 0.85 });
     const glove = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
     const skin = new THREE.MeshStandardMaterial({ color: 0xd9a383, roughness: 0.7 });
+    const asset = skinAsset();
+    const dm = asset?.dims;
 
     this.root.add(this.lean);
     const skiGeo = skiGeometry();
@@ -65,68 +72,104 @@ export class SkierModel {
       const body = new THREE.Mesh(skiGeo, skiMat); body.position.z = 0.05; body.castShadow = true; ski.add(body);
       const bind = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.42), buckle); bind.position.set(0, 0.04, 0); ski.add(bind);
       // chaussure : coque + tige + boucles
-      const shell = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.32), bootMat); shell.position.set(0, 0.09, 0.02); shell.castShadow = true; ski.add(shell);
-      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.075, 0.24, 10), bootMat); cuff.position.set(0, 0.24, -0.03); cuff.rotation.x = 0.25; cuff.castShadow = true; ski.add(cuff);
-      if (!lite) for (const by of [0.16, 0.26]) { const bk = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.02, 0.05), buckle); bk.position.set(0, by, 0.03); ski.add(bk); }
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.1, 0.33), bootMat); shell.position.set(0, 0.1, 0.02); shell.castShadow = true; ski.add(shell);
+      const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.1, 10, 1, false, 0, Math.PI), bootMat); toe.rotation.set(0, Math.PI / 2, 0); toe.position.set(0, 0.1, 0.185); toe.rotation.z = Math.PI / 2; ski.add(toe);
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.085, 0.27, 12), bootMat); cuff.position.set(0, 0.26, -0.035); cuff.rotation.x = 0.25; cuff.castShadow = true; ski.add(cuff);
+      if (!lite) for (const by of [0.17, 0.27, 0.35]) { const bk = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.022, 0.06), buckle); bk.position.set(sx < 0 ? -0.075 : 0.075, by, 0.0 - (by - 0.17) * 0.2); ski.add(bk); }
       ski.position.x = sx;
       this.lean.add(ski); this.skis.push(ski);
     }
     this.lean.add(this.hips);
+    this.hips.add(this.torso);
+    this.root.add(this.body);
+
+    if (asset && dm) {
+      // ---- personnage articulé
+      this.Lt = dm.thigh; this.Ls = dm.shin; this.ankleY = dm.ankle + 0.075;
+      const rig = new SkinRig({
+        jacket: jc, jacket2: new THREE.Color(jc).multiplyScalar(0.55).getHex(),
+        pants: colors.pants ?? 0x1b1f2a, glove: 0x161616, skin: 0xd9a383,
+      });
+      this.rig = rig;
+      this.body.add(rig.container);
+      this.head.position.copy(dm.head);
+      this.torso.add(this.head);
+      for (const s of [-1, 1]) {
+        const upper = new THREE.Group(); upper.position.set(s * dm.shoulder.x, dm.shoulder.y, dm.shoulder.z);
+        const lower = new THREE.Group(); lower.position.y = -dm.upper; upper.add(lower);
+        const wrist = new THREE.Group(); wrist.position.y = -dm.fore; lower.add(wrist);
+        const pole = this.makePole(glove, poleMat); wrist.add(pole);
+        this.torso.add(upper);
+        this.arms.push({ upper, lower, pole, wrist });
+      }
+      // casque, masque, sangle sur la tête du personnage
+      const hs = new THREE.Group(); hs.scale.setScalar(dm.headR / 0.118);
+      const hg = new THREE.SphereGeometry(0.128, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.6);
+      const hm = new THREE.Mesh(hg, helmet); hm.position.set(0, 0.012, -0.008); hm.castShadow = true; hs.add(hm);
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.16), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 })); vent.position.set(0, 0.138, -0.01); hs.add(vent);
+      const gm = new THREE.Mesh(new THREE.CylinderGeometry(0.122, 0.122, 0.058, 18, 1, true, -1.15, 2.3), goggle); gm.position.set(0, -0.012, 0.004); hs.add(gm);
+      const frameM = new THREE.Mesh(new THREE.TorusGeometry(0.122, 0.006, 4, 24, 2.3), new THREE.MeshStandardMaterial({ color: 0x111111 })); frameM.rotation.set(Math.PI / 2, 0, Math.PI / 2 - 1.15 - 0.0); frameM.position.y = -0.012 + 0.03; hs.add(frameM);
+      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 18, 1, true, 1.15, Math.PI * 2 - 2.3), new THREE.MeshStandardMaterial({ color: 0x111111 })); strap.position.y = -0.012; hs.add(strap);
+      rig.headSocket.add(hs);
+      return;
+    }
+
+    // ---- repli : mannequin procédural
     const pelvis = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), pants); pelvis.scale.set(1.2, 0.8, 0.95); pelvis.castShadow = true; this.hips.add(pelvis);
     for (const sx of [-0.11, 0.11]) {
       const thigh = new THREE.Group(); thigh.position.set(sx, 0, 0);
-      thigh.add(limb(0.085, 0.065, this.L, pants));
-      const shin = new THREE.Group(); shin.position.y = -this.L;
-      shin.add(limb(0.068, 0.07, this.L - 0.05, pants));
-      if (!lite) shin.add(ball(0.07, pants));
+      thigh.add(limb(0.085, 0.065, this.Lt, pants));
+      const shin = new THREE.Group(); shin.position.y = -this.Lt;
+      shin.add(limb(0.068, 0.07, this.Ls - 0.05, pants));
       thigh.add(shin);
       this.hips.add(thigh);
       this.legs.push({ thigh, shin });
     }
-    this.hips.add(this.torso);
-    // veste : torse évasé aux épaules, bande de couleur, col
     const chestG = new THREE.CylinderGeometry(0.2, 0.16, 0.5, 14, 1); chestG.translate(0, 0.27, 0);
     const chest = new THREE.Mesh(chestG, jacket); chest.scale.set(1.05, 1, 0.72); chest.castShadow = true; this.torso.add(chest);
-    const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), jacket); shoulders.scale.set(1.12, 0.45, 0.75); shoulders.position.y = 0.51; shoulders.castShadow = true; this.torso.add(shoulders);
-    if (!lite) {
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.175, 0.07, 14), jacket2); stripe.scale.set(1.06, 1, 0.74); stripe.position.y = 0.25; this.torso.add(stripe);
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.1, 10), jacket2); collar.position.y = 0.6; this.torso.add(collar);
-    }
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.1, 10), jacket2); collar.position.y = 0.6; this.torso.add(collar);
     this.head.position.set(0, 0.74, 0.02); this.torso.add(this.head);
     const face = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), skin); face.position.set(0, -0.02, 0.01); this.head.add(face);
-    const hg = new THREE.SphereGeometry(0.128, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62);
-    const hm = new THREE.Mesh(hg, helmet); hm.position.y = 0.0; hm.castShadow = true; this.head.add(hm);
-    const gm = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.06, 16, 1, true, -1.2, 2.4), goggle); gm.position.set(0, -0.005, 0.0); gm.rotation.y = 0; this.head.add(gm);
-    const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.122, 0.122, 0.04, 16, 1, true, 1.2, Math.PI * 2 - 2.4), new THREE.MeshStandardMaterial({ color: 0x111111 })); strap.position.y = -0.005; this.head.add(strap);
+    const hm = new THREE.Mesh(new THREE.SphereGeometry(0.128, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), helmet); hm.castShadow = true; this.head.add(hm);
+    const gm = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.06, 16, 1, true, -1.2, 2.4), goggle); gm.position.y = -0.005; this.head.add(gm);
     for (const sx of [-0.23, 0.23]) {
       const upper = new THREE.Group(); upper.position.set(sx, 0.5, 0);
-      if (!lite) upper.add(ball(0.065, jacket));
       upper.add(limb(0.06, 0.055, 0.3, jacket));
       const lower = new THREE.Group(); lower.position.y = -0.3;
-      if (!lite) lower.add(ball(0.055, jacket));
       lower.add(limb(0.052, 0.048, 0.26, jacket));
       const hand = ball(0.05, glove); hand.position.y = -0.28; hand.scale.set(1, 1.2, 1); lower.add(hand);
       upper.add(lower);
-      const pole = new THREE.Group(); pole.position.y = -0.28;
-      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.018, 0.14, 6), glove); grip.position.y = -0.02; pole.add(grip);
-      const pm = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.007, 1.15, 5), poleMat);
-      pm.position.y = -0.6; pm.castShadow = true; pole.add(pm);
-      const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 10), glove);
-      basket.position.y = -1.07; pole.add(basket);
-      lower.add(pole);
+      const wrist = new THREE.Group(); wrist.position.y = -0.28; lower.add(wrist);
+      const pole = this.makePole(glove, poleMat); wrist.add(pole);
       this.torso.add(upper);
-      this.arms.push({ upper, lower, pole });
+      this.arms.push({ upper, lower, pole, wrist });
     }
+  }
+
+  private makePole(glove: THREE.Material, poleMat: THREE.Material) {
+    const pole = new THREE.Group();
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.016, 0.15, 8), glove); grip.position.y = -0.01; pole.add(grip);
+    const strapM = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.005, 4, 10), glove); strapM.position.y = 0.06; pole.add(strapM);
+    const pm = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.007, 1.15, 6), poleMat);
+    pm.position.y = -0.6; pm.castShadow = true; pole.add(pm);
+    const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 12), glove);
+    basket.position.y = -1.07; pole.add(basket);
+    return pole;
+  }
+
+  /** masque le corps (vue subjective : seuls les skis restent) */
+  setBodyVisible(v: boolean) {
+    this.body.visible = v;
+    if (this.rig) { this.torso.visible = v; } else this.hips.visible = v;
   }
 
   /** pose : flexion, inclinaison, schuss, temps, poussée, freinage, planté de bâton (-1 gauche / +1 droite, 0..1), chute */
   pose(crouch: number, lean: number, tuck: number, t: number, push: number, brake: number, plant = 0, plantSide = 0, crash = 0) {
     const a = 0.42 + crouch * 0.6 + tuck * 0.45;
-    const L = this.L;
-    this.hips.position.set(0, 0.24 + 2 * L * Math.cos(a) * 0.97, -Math.sin(a) * 0.17);
+    this.hips.position.set(0, this.ankleY + (this.Lt + this.Ls) * Math.cos(a) * 0.97, -Math.sin(a) * 0.17);
     const plough = brake * 0.13;
     this.skis[0].rotation.y = plough; this.skis[1].rotation.y = -plough;
-    this.skis[0].position.x = -0.14 - brake * 0.07; this.skis[1].position.x = 0.14 + brake * 0.07;
+    this.skis[0].position.x = -0.13 - brake * 0.07; this.skis[1].position.x = 0.13 + brake * 0.07;
     // angulation : genoux vers l'intérieur du virage, hanches décalées
     const ang = lean * 0.55;
     this.hips.position.x = -lean * 0.12;
@@ -136,9 +179,11 @@ export class SkierModel {
       leg.shin.rotation.x = 2 * a;
     });
     this.lean.rotation.z = lean;
+    this.hips.rotation.set(this.rig ? a * 0.35 : 0, 0, 0);
     this.torso.rotation.z = -lean * 0.55;
-    this.torso.rotation.x = 0.18 + a * 0.42 + tuck * 0.6;
-    this.head.rotation.x = -(0.18 + a * 0.42 + tuck * 0.6) * 0.75;   // regard vers l'avant
+    this.torso.rotation.x = 0.18 + a * (this.rig ? 0.12 : 0.42) + tuck * (this.rig ? 0.85 : 0.6);
+    this.head.rotation.x = -(0.18 + a * 0.42 + tuck * 0.6) * 0.8;   // regard vers l'avant
+    this.head.rotation.z = lean * 0.3;
     const swing = Math.sin(t * 5) * push;
     this.arms.forEach((arm, i) => {
       const s = i === 0 ? -1 : 1;
@@ -147,12 +192,18 @@ export class SkierModel {
       arm.upper.rotation.x = -0.55 - tuck * 0.85 + swing * 0.9 - pl * 0.55;
       arm.upper.rotation.z = s * (0.3 - tuck * 0.18) + (crash ? s * Math.sin(t * 11 + i) * 1.2 * crash : 0);
       arm.lower.rotation.x = -0.8 - tuck * 0.55 + pl * 0.35;
-      arm.pole.rotation.x = 1.3 + tuck * 0.95 - swing * 0.7 - pl * 0.9;
-      arm.pole.rotation.z = -s * 0.12;
+      arm.wrist.rotation.x = 1.3 + tuck * 0.95 - swing * 0.7 - pl * 0.9;
+      arm.pole.rotation.set(0, 0, -s * 0.12);
     });
+    if (this.rig) {
+      this.rig.apply(this, lean);
+      // les bâtons suivent la main réelle du personnage
+      this.arms.forEach((arm, i) => {
+        if (this.rig!.handCenter(i === 1, this._hand)) { arm.wrist.updateMatrixWorld(true); arm.pole.position.copy(arm.wrist.worldToLocal(this._hand)); }
+      });
+    }
   }
 }
-
 // ---------------------------------------------------------------- physique
 export class Skier {
   model: SkierModel;
@@ -179,6 +230,7 @@ export class Skier {
   private jumpHeld = false;
   private tumble = new THREE.Euler();
   events: string[] = [];
+  sinkScale = 1;       // enfoncement visuel en poudreuse (0 en vue subjective)
   plant = 1; plantSide = 0; private turnSign = 0; private edgeLoss = 0; private warned = false;
 
   constructor(public hf: HeightField, public mask: MaskField, public forest: Forest, model?: SkierModel | null) {
@@ -416,7 +468,7 @@ export class Skier {
   }
 
   /** met à jour le modèle 3D (appelé une fois par image) */
-  updateModel(dt: number) {
+  updateModel(dt: number, full = true) {
     const m = this.model;
     m.root.position.copy(this.pos);
     // orientation : axe Y = normale lissée, avant = cap
@@ -435,8 +487,8 @@ export class Skier {
     }
     const crouchT = 0.15 + this.carve * 0.35 + Math.max(0, -this.compress) * 0.6 + Math.max(0, this.compress) * 0.5 + (this.grounded ? 0 : 0.25);
     this.crouch += (crouchT - this.crouch) * Math.min(1, dt * 8);
-    m.pose(this.crouch, -this.leanAngle, this.tuck, this.t, this.push, this.brake, this.plant, this.plantSide, this.crashT > 0 ? 1 : 0);
+    if (full) m.pose(this.crouch, -this.leanAngle, this.tuck, this.t, this.push, this.brake, this.plant, this.plantSide, this.crashT > 0 ? 1 : 0);
     // enfoncement dans la poudreuse
-    if (this.grounded && this.crashT <= 0) m.root.position.y -= 0.14 * (1 - this.onPiste);
+    if (this.grounded && this.crashT <= 0) m.root.position.y -= 0.12 * (1 - this.onPiste) * this.sinkScale;
   }
 }

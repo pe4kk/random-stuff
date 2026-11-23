@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GameData, HeightField, MaskField, Piste, loadAll } from './data';
-import { CoreTerrain, makeBackdrop, makeSnowMaterial } from './terrain';
+import { loadSkier } from './skinrig';
+import { CoreTerrain, makeBackdrop, makeGroomTexture, makeNormalTexture, makeSnowMaterial } from './terrain';
 import { Forest } from './trees';
 import { DIFF_COLOR, DIFF_LABEL, LiftRuntime, makeFarBuildings, makeBuildings, makeLifts, makePistePoles, makeSigns } from './world';
 import { Skier } from './skier';
@@ -20,8 +21,10 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 // ----------------------------------------------------------- chargement
 const bar = $('load-bar'), loadLabel = $('load-label');
-loadAll((f, label) => { bar.style.width = (f * 100).toFixed(0) + '%'; loadLabel.textContent = label; })
-  .then(start)
+Promise.all([
+  loadAll((f, label) => { bar.style.width = (f * 100).toFixed(0) + '%'; loadLabel.textContent = label; }),
+  loadSkier('./data/skier.json').catch(e => console.warn('skieur articulé indisponible', e)),
+]).then(([d]) => start(d))
   .catch((e) => { loadLabel.textContent = 'Erreur de chargement : ' + e.message; console.error(e); });
 
 function start(data: GameData) {
@@ -88,7 +91,7 @@ function build(data: GameData) {
 
   const scene = new THREE.Scene();
   const fogCol = new THREE.Color(0xa9bdd6);
-  scene.fog = new THREE.FogExp2(fogCol, 0.000032);
+  scene.fog = new THREE.FogExp2(fogCol, 0.000024);
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 160000);
 
   // soleil d'après-midi au sud-ouest (éclaire les pentes d'Arc 1600)
@@ -111,6 +114,7 @@ function build(data: GameData) {
   maskTex.flipY = false; maskTex.colorSpace = THREE.NoColorSpace; maskTex.generateMipmaps = true;
   maskTex.minFilter = THREE.LinearMipmapLinearFilter; maskTex.anisotropy = 8; maskTex.needsUpdate = true;
   const coreMat = makeSnowMaterial('core', maskTex, meta.coreHalf);
+  (coreMat as any).snowUniforms.uGroom.value = makeGroomTexture(data.features.pistes, meta.coreHalf);
   const core = new CoreTerrain(hf, coreMat);
   core.chunks.forEach(c => (c.mesh.castShadow = true));
   scene.add(core.group);
@@ -118,8 +122,10 @@ function build(data: GameData) {
   const midTex = new THREE.Texture(data.midForest);
   midTex.flipY = false; midTex.colorSpace = THREE.NoColorSpace; midTex.needsUpdate = true;
   const midMat = makeSnowMaterial('mid', midTex, meta.midHalf);
+  (midMat as any).snowUniforms.uNormTex.value = makeNormalTexture(midHF);
   scene.add(makeBackdrop(midHF, 320, meta.coreHalf - 40, 30, midMat));
   const farMat = makeSnowMaterial('far', null, meta.farHalf);
+  (farMat as any).snowUniforms.uNormTex.value = makeNormalTexture(farHF);
   scene.add(makeBackdrop(farHF, 400, meta.midHalf - 300, 80, farMat));
 
   // ------------------------------------------------------- monde
@@ -213,8 +219,8 @@ function build(data: GameData) {
     const p = skier.pos;
     let target: THREE.Vector3, look: THREE.Vector3;
     if (camMode === 2) {
-      const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.55, 0.2));
-      target = h.clone().addScaledVector(head, -0.35); look = h.clone().addScaledVector(head, 6).add(new THREE.Vector3(0, -2.4, 0));
+      const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.4, 0.12));
+      target = h.clone().addScaledVector(head, -0.2); look = h.clone().addScaledVector(head, 6).add(new THREE.Vector3(0, -4.6, 0));
     } else {
       let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
       let height = (camMode === 0 ? 3.6 : 8) * camZoom;
@@ -263,7 +269,8 @@ function build(data: GameData) {
     camera.updateProjectionMatrix();
     camSnap = false;
     skier.model.root.visible = true;
-    skier.model.hips.visible = camMode !== 2 || skier.crashT > 0;
+    skier.model.setBodyVisible(camMode !== 2 || skier.crashT > 0);
+    skier.sinkScale = camMode === 2 ? 0 : 1;
   }
 
   // ------------------------------------------------------- interface
@@ -306,6 +313,7 @@ function build(data: GameData) {
   $('map-close').onclick = () => toggleMap(false);
   help.addEventListener('click', () => help.classList.remove('show'));
   const map = new PisteMap(data.features, hf, mask, lifts, (l) => { spawnAtLift(l); toggleMap(false); message(`Sommet : ${l.lift.name}`, 2); });
+  map.trees = { xs: forest.xs, zs: forest.zs, hs: forest.hs, count: forest.count };
 
   // mini-carte
   const mini = $('minimap') as HTMLCanvasElement;
@@ -607,7 +615,7 @@ function build(data: GameData) {
   };
   // test automatique : ?auto=1 lance directement
   if (new URLSearchParams(location.search).has('auto')) go.click();
-  (window as any).__game = { skier, camera, hf, lifts, routes, crowd, toggleMap, togglePause, setCam: (m: number) => { camMode = m; camSnap = true; },
+  (window as any).__game = { skier, camera, hf, lifts, routes, crowd, forest, toggleMap, togglePause, setCam: (m: number) => { camMode = m; camSnap = true; },
     debugCam: (p: number[] | null, l?: number[]) => { debugCam = p ? { p: new THREE.Vector3(...p), l: new THREE.Vector3(...l!) } : null; },
     place: (x: number, z: number, yaw: number) => { skier.place(x, z, yaw); core.warm(skier.pos); camSnap = true; } };
   frame();

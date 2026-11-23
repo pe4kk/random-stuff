@@ -68,6 +68,8 @@ export function makeSnowMaterial(kind: 'core' | 'mid' | 'far', mask: THREE.Textu
     uTreeFade: { value: new THREE.Vector2(800, 1100) },
     uSunDir: { value: new THREE.Vector3(0.4, 0.6, 0.3).normalize() },
     uTime: { value: 0 },
+    uGroom: { value: null as THREE.Texture | null },
+    uNormTex: { value: null as THREE.Texture | null },
   };
   (mat as any).snowUniforms = uniforms;
   mat.defines = { KIND_CORE: kind === 'core' ? 1 : 0, KIND_MID: kind === 'mid' ? 1 : 0, KIND_FAR: kind === 'far' ? 1 : 0 };
@@ -79,9 +81,9 @@ export function makeSnowMaterial(kind: 'core' | 'mid' | 'far', mask: THREE.Textu
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWPos; varying vec3 vWNorm; varying float vAO;
-uniform sampler2D uMask; uniform sampler2D uDetail; uniform float uHalf; uniform vec2 uTreeFade; uniform vec3 uSunDir; uniform float uTime;
+uniform sampler2D uMask; uniform sampler2D uDetail; uniform sampler2D uGroom; uniform sampler2D uNormTex; uniform float uHalf; uniform vec2 uTreeFade; uniform vec3 uSunDir; uniform float uTime;
 ${NOISE}
-float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
+float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 uv = (vWPos.xz + uHalf) / (2.0 * uHalf);
@@ -90,6 +92,17 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
     m = texture2D(uMask, uv);
   #endif
   vec3 wn = normalize(vWNorm);
+  #if !KIND_CORE
+    // relief lointain : normales issues du MNT à pleine résolution + ravines procédurales
+    wn = normalize(texture2D(uNormTex, uv).xyz * 2.0 - 1.0);
+    {
+      float st = smoothstep(0.08, 0.35, 1.0 - wn.y);
+      vec3 g1 = texture2D(uDetail, vWPos.xz / 900.0).xyz * 2.0 - 1.0;
+      vec3 g2 = texture2D(uDetail, vWPos.xz / 2600.0 + 0.21).xyz * 2.0 - 1.0;
+      wn = normalize(wn + vec3(g1.x, 0.0, g1.z) * (0.25 + 0.9 * st) + vec3(g2.x, 0.0, g2.z) * (0.2 + 0.5 * st));
+    }
+  #endif
+  gWN = wn;
   float slope = 1.0 - wn.y;
   float dist = length(cameraPosition - vWPos);
   vec4 dA = texture2D(uDetail, vWPos.xz / 41.0);
@@ -121,6 +134,11 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
   // piste damée : plus mate et grise, bandes de dameuse (4,5 m) dans le sens de la pente + velours
   vec2 fall = normalize(wn.xz + vec2(1e-4));
   float across = dot(vWPos.xz, vec2(-fall.y, fall.x));
+  #if KIND_CORE
+    // bandes parallèles à l'axe de la piste (distance signée à la ligne OSM, calculée au chargement)
+    vec2 gt = texture2D(uGroom, uv).rg;
+    across = mix(across, gt.r, step(0.5, gt.g));
+  #endif
   float band = 0.5 + 0.5 * sin(across * 1.396 + dA.a * 2.0);
   // velours filtré : s'efface quand les stries deviennent plus fines qu'un pixel (pas de moiré)
   float cw = fwidth(across * 40.0 / 6.2832);
@@ -135,7 +153,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
   float rockN = dB.a;
   gRock = smoothstep(0.30, 0.42, slope + 0.14 * (rockN - 0.5));
   #if !KIND_CORE
-    gRock = smoothstep(0.33, 0.48, slope + 0.18 * (rockN - 0.5));
+    gRock = smoothstep(0.2, 0.34, slope + 0.16 * (rockN - 0.5) + 0.08 * (vnoise(vWPos.xz / 160.0) - 0.5));
   #endif
   // roche en projection triplanaire (pas d'étirement sur les falaises)
   vec3 bw3 = pow(abs(wn), vec3(4.0)); bw3 /= (bw3.x + bw3.y + bw3.z);
@@ -151,6 +169,15 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge;`)
     col = mix(col, col * vec3(0.84, 0.89, 0.96), gForest * 0.5);
   #endif
   vec3 forestCol = mix(vec3(0.055, 0.095, 0.07), vec3(0.42, 0.47, 0.5), 0.12 + 0.25 * dB.a);
+  #if !KIND_CORE
+  {
+    // forêt lointaine : houppiers et clairières enneigées, lisières irrégulières (pas d'aplats)
+    float canopy = texture2D(uDetail, vWPos.xz / 47.0).a * 0.55 + texture2D(uDetail, vWPos.xz / 11.0).a * 0.45;
+    float edge = vnoise(vWPos.xz / 130.0);
+    gForest *= smoothstep(0.32, 0.6, canopy * 0.8 + gForest * 0.45 + (edge - 0.5) * 0.35);
+    forestCol = mix(vec3(0.05, 0.085, 0.065), vec3(0.5, 0.55, 0.6), smoothstep(0.55, 0.8, canopy) * 0.45);
+  }
+  #endif
   col = mix(col, forestCol, gForest * fFade);
   // vallée sans neige : prés d'hiver et forêts de feuillus
   vec3 meadow = mix(vec3(0.20, 0.22, 0.16), vec3(0.30, 0.29, 0.22), tint);
@@ -181,7 +208,11 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   float rph = dot(vWPos.xz, wd) * 0.85 + n2.x * 6.0;
   float rip = cos(rph) * (1.0 - smoothstep(0.2, 0.6, fwidth(rph / 6.2832)));
   pert.xz += wd * rip * 0.18 * powderK * (1.0 - smoothstep(30.0, 300.0, d));
-  normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
+  #if KIND_CORE
+    normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
+  #else
+    normal = normalize((viewMatrix * vec4(gWN + pert * 0.5, 0.0)).xyz);
+  #endif
 }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 {
@@ -199,7 +230,7 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   }
 }`);
   };
-  mat.customProgramCacheKey = () => 'snow2-' + kind;
+  mat.customProgramCacheKey = () => 'snow3-' + kind;
   return mat;
 }
 
@@ -349,4 +380,69 @@ export function makeBackdrop(hf: HeightField, segs: number, holeHalf: number, dr
   const m = new THREE.Mesh(g, mat);
   m.receiveShadow = false;
   return m;
+}
+
+// ----------------------------------------------------------------------------
+// Textures préparées au chargement
+// ----------------------------------------------------------------------------
+/** normales du champ de hauteur (relief des terrains de fond, indépendant de la finesse du maillage) */
+export function makeNormalTexture(hf: HeightField): THREE.DataTexture {
+  const N = hf.n, c = hf.cell;
+  const d = new Uint8Array(N * N * 4);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const dx = (hf.at(i - 1, j) - hf.at(i + 1, j)) / (2 * c), dz = (hf.at(i, j - 1) - hf.at(i, j + 1)) / (2 * c);
+    const l = Math.hypot(dx, 1, dz);
+    const o = (j * N + i) * 4;
+    d[o] = (dx / l * 0.5 + 0.5) * 255; d[o + 1] = (1 / l * 0.5 + 0.5) * 255; d[o + 2] = (dz / l * 0.5 + 0.5) * 255; d[o + 3] = 255;
+  }
+  const t = new THREE.DataTexture(d, N, N, THREE.RGBAFormat);
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; t.needsUpdate = true;
+  return t;
+}
+
+/**
+ * Bandes de dameuse : distance signée (m) à l'axe de la piste la plus proche (R) et validité (G).
+ * Les lignes OSM sont d'abord adoucies (Chaikin) pour éviter les coutures aux angles.
+ */
+export function makeGroomTexture(pistes: { pts: [number, number][]; area: boolean; diff: string }[], half: number, N = 1024): THREE.DataTexture {
+  const d = new Float32Array(N * N * 4);
+  const best = new Float32Array(N * N).fill(1e9);
+  const cell = (2 * half) / N, R = 42;
+  for (const p of pistes) {
+    if (p.area || p.diff === 'freeride' || p.pts.length < 2) continue;
+    let pts = p.pts.map(q => [q[0], q[1]] as [number, number]);
+    for (let it = 0; it < 3; it++) {
+      const o: [number, number][] = [pts[0]];
+      for (let k = 0; k < pts.length - 1; k++) {
+        const a = pts[k], b = pts[k + 1];
+        o.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+      }
+      o.push(pts[pts.length - 1]);
+      pts = o;
+    }
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [ax, az] = pts[k], [bx, bz] = pts[k + 1];
+      const ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez;
+      if (L2 < 1e-6) continue;
+      const L = Math.sqrt(L2);
+      const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - R + half) / cell)), i1 = Math.min(N - 1, Math.ceil((Math.max(ax, bx) + R + half) / cell));
+      const j0 = Math.max(0, Math.floor((Math.min(az, bz) - R + half) / cell)), j1 = Math.min(N - 1, Math.ceil((Math.max(az, bz) + R + half) / cell));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const x = -half + (i + 0.5) * cell, z = -half + (j + 0.5) * cell;
+        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L2));
+        const px = ax + ex * t - x, pz = az + ez * t - z;
+        const dist = Math.hypot(px, pz);
+        if (dist > R || dist >= best[j * N + i]) continue;
+        best[j * N + i] = dist;
+        const signed = ((x - ax) * ez - (z - az) * ex) / L;    // distance à la droite, signée
+        const o = (j * N + i) * 4;
+        d[o] = signed; d[o + 1] = 1;
+      }
+    }
+  }
+  const t = new THREE.DataTexture(d, N, N, THREE.RGBAFormat, THREE.FloatType);
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+  t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true;
+  return t;
 }

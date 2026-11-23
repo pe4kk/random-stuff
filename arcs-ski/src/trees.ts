@@ -7,7 +7,7 @@ function conifer(tiers: number, seg: number, seed: number, round = false): THREE
   let s = seed;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   const green = new THREE.Color(round ? 0x2a4430 : 0x1f3a2b), green2 = new THREE.Color(round ? 0x34503a : 0x274634);
-  const dark = new THREE.Color(0x0b1710), snow = new THREE.Color(0xf4f7fc), snowShade = new THREE.Color(0xd5e0ef), bark = new THREE.Color(0x3b2a20);
+  const dark = new THREE.Color(0x1c3026), snow = new THREE.Color(0xf4f7fc), snowShade = new THREE.Color(0xd5e0ef), bark = new THREE.Color(0x3b2a20);
   const tri = (a: number[], b: number[], c: number[], col: THREE.Color) => {
     P.push(...a, ...b, ...c);
     for (let i = 0; i < 3; i++) C.push(col.r, col.g, col.b);
@@ -53,7 +53,23 @@ function conifer(tiers: number, seg: number, seed: number, round = false): THREE
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
-  g.computeVertexNormals();
+  // normales « feuillage » : moitié face, moitié ellipsoïde autour du tronc -> volume doux, pas de dessous noirs
+  const N = new Float32Array(P.length);
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), fn = new THREE.Vector3(), rn = new THREE.Vector3();
+  for (let t = 0; t < P.length; t += 9) {
+    e1.set(P[t + 3] - P[t], P[t + 4] - P[t + 1], P[t + 5] - P[t + 2]);
+    e2.set(P[t + 6] - P[t], P[t + 7] - P[t + 1], P[t + 8] - P[t + 2]);
+    fn.crossVectors(e1, e2).normalize();
+    for (let v = 0; v < 3; v++) {
+      const x = P[t + v * 3], y = P[t + v * 3 + 1], z = P[t + v * 3 + 2];
+      const trunk = y < 0.26 && Math.hypot(x, z) < 0.03;
+      rn.set(x / 0.3, (y - 0.42) / 0.9 + 0.35, z / 0.3).normalize();
+      const k = trunk ? 0.0 : 0.6;
+      const n = fn.clone().multiplyScalar(1 - k).addScaledVector(rn, k).normalize();
+      N[t + v * 3] = n.x; N[t + v * 3 + 1] = n.y; N[t + v * 3 + 2] = n.z;
+    }
+  }
+  g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
   return g;
 }
 
@@ -94,9 +110,9 @@ export class Forest {
       this.index(i, this.xs[i], this.zs[i]);
     }
 
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true, emissive: 0x060a08 });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: 0x060a08 });
     mat.color.setScalar(1.3);
-    const geoHi = [conifer(9, 11, 11), conifer(10, 10, 29), conifer(7, 11, 53, true)];
+    const geoHi = [conifer(11, 13, 11), conifer(12, 12, 29), conifer(8, 13, 53, true)];
     const geoMid = [conifer(6, 8, 5), conifer(6, 8, 17), conifer(5, 8, 41, true)];
     const geoLo = [conifer(3, 5, 7), conifer(3, 5, 7), conifer(3, 6, 9, true)];
     const nc = (hf.half * 2) / this.chunkSize;

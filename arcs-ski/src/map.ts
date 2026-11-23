@@ -10,6 +10,8 @@ export class PisteMap {
   private cv: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private base: HTMLCanvasElement | null = null;
+  /** arbres réels (relevé IGN) pour dessiner la forêt */
+  trees: { xs: Float32Array; zs: Float32Array; hs: Float32Array; count: number } | null = null;
   private readonly S = 2048;             // px de la carte de base (2 m/px)
   private zoom = 1; private cx = 0; private cz = 0;   // centre en mètres
   open = false;
@@ -93,6 +95,21 @@ export class PisteMap {
     const H = hf.data, N = hf.n;
     // lumière du nord-ouest (convention cartographique)
     const lx = -0.6, ly = 0.75, lz = -0.55;
+    // densité de forêt à partir des arbres (houppier ~ 0,25 × hauteur)
+    const dens = new Float32Array(S * S);
+    if (this.trees) {
+      const tr = this.trees, k = S / (2 * hf.half);
+      for (let t = 0; t < tr.count; t++) {
+        const px = (tr.xs[t] + hf.half) * k, pz = (tr.zs[t] + hf.half) * k;
+        const rad = Math.max(1.2, (1.2 + tr.hs[t] * 0.22) * k);
+        const r2 = rad * rad;
+        for (let jj = Math.floor(pz - rad); jj <= pz + rad; jj++) for (let ii = Math.floor(px - rad); ii <= px + rad; ii++) {
+          if (ii < 0 || jj < 0 || ii >= S || jj >= S) continue;
+          const q = ((ii + 0.5 - px) ** 2 + (jj + 0.5 - pz) ** 2) / r2;
+          if (q < 1) dens[jj * S + ii] += (1 - q) * 0.9;
+        }
+      }
+    }
     for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
       const ii = Math.min(N - 2, Math.max(1, Math.floor(i * N / S))), jj = Math.min(N - 2, Math.max(1, Math.floor(j * N / S)));
       const dx = (H[jj * N + ii - 1] - H[jj * N + ii + 1]) / 4, dz = (H[(jj - 1) * N + ii] - H[(jj + 1) * N + ii]) / 4;
@@ -101,12 +118,12 @@ export class PisteMap {
       sh = Math.max(0, Math.min(1, 0.35 + sh * 0.75));
       const h = H[jj * N + ii];
       const k = (jj * mn + ii) * 4;
-      const forest = md[k + 1] / 255, bld = md[k + 3] / 255;
+      const forest = Math.max(md[k + 1] / 255 * (this.trees ? 0.5 : 1), Math.min(1, dens[j * S + i])), bld = md[k + 3] / 255;
       // neige bleutée ombrée
       let r = 160 + 95 * sh, g = 175 + 80 * sh, b = 200 + 55 * sh;
       // forêt : vert sombre tacheté
       if (forest > 0.08) {
-        const t = Math.min(1, forest * 2.2) * (0.7 + 0.3 * ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 7) / 7);
+        const t = Math.min(1, forest * 1.6) * (0.7 + 0.3 * ((((i * 73856093) ^ (j * 19349663)) >>> 0) % 7) / 7);
         r = r * (1 - t) + (30 + 40 * sh) * t; g = g * (1 - t) + (62 + 50 * sh) * t; b = b * (1 - t) + (45 + 35 * sh) * t;
       }
       if (bld > 0.4) { r = 150; g = 110; b = 90; }

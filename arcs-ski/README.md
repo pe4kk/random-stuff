@@ -4,6 +4,7 @@ Jeu de ski 3D en simulation libre sur la piste **Mont-Blanc** (bleue) à **Arc 1
 
 - relief : IGN RGE ALTI® 2 m (MNT) et MNS pour placer chaque arbre et donner leur hauteur aux bâtiments ;
 - pistes, remontées, bâtiments : OpenStreetMap (ODbL) ;
+- personnage du skieur : « Universal Base Characters » de Quaternius (CC0), habillé et animé dans le jeu ;
 - fond de vallée et massifs lointains : IGN + SRTM.
 
 ## Lancer
