@@ -278,7 +278,7 @@ export function makeImpostor(renderer: THREE.WebGLRenderer, src: THREE.BufferGeo
     for (const k of [0, 1, 2, 0, 2, 3]) {
       const q = v[k];
       P.push(q[0], q[1], q[2]); U.push(q[3], q[4]);
-      const n = new THREE.Vector3(q[0] * 1.6, 0.75, q[2] * 1.6).normalize();
+      const n = new THREE.Vector3(q[0] * 1.6, 0.45, q[2] * 1.6).normalize();
       N.push(n.x, n.y, n.z); C.push(1, 1, 1);
     }
   };
@@ -290,7 +290,7 @@ export function makeImpostor(renderer: THREE.WebGLRenderer, src: THREE.BufferGeo
   geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
   rt.texture.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.MeshLambertMaterial({ map: rt.texture, vertexColors: true, alphaTest: 0.45, side: THREE.DoubleSide, emissive: 0x0a100c });
-  mat.color.setScalar(1.3);   // même luminosité perçue que les sapins en volume
+  mat.color.setScalar(1.12);   // même luminosité perçue que les sapins en volume
   mat.userData.rt = rt;
   return { geo, mat };
 }

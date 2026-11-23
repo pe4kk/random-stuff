@@ -153,6 +153,21 @@ function build(data: GameData) {
   // ------------------------------------------------------- skieur
   const skier = new Skier(hf, mask, forest);
   scene.add(skier.model.root);
+  // ombre de contact douce sous les skis (en plus de la carte d'ombres, qui est trop grossière à cette échelle)
+  const blobMat = new THREE.ShaderMaterial({
+    uniforms: { uK: { value: 1 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform float uK; varying vec2 vUv;
+      void main(){ vec2 d = (vUv - 0.5) * 2.0; float a = (1.0 - smoothstep(0.15, 1.0, length(d))) * uK;
+        gl_FragColor = vec4(mix(vec3(1.0), vec3(0.6, 0.66, 0.8), a * 0.75), 1.0); }`,
+    transparent: true, depthWrite: false, toneMapped: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6,
+  });
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 1.9).rotateX(-Math.PI / 2), blobMat);
+  blob.renderOrder = 2;
+  scene.add(blob);
+  const blobQ = new THREE.Quaternion(), blobUp = new THREE.Vector3(0, 1, 0), blobN = new THREE.Vector3();
   const tracks = new Tracks(14000, 0.3); scene.add(tracks.mesh);
   const spray = new Spray(); scene.add(spray.points);
   // autres skieurs + traces déjà présentes sur les pistes
@@ -227,8 +242,8 @@ function build(data: GameData) {
     const p = skier.pos;
     let target: THREE.Vector3, look: THREE.Vector3;
     if (camMode === 2) {
-      const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.4, 0.12));
-      target = h.clone().addScaledVector(head, -0.5); look = h.clone().addScaledVector(head, 10).add(new THREE.Vector3(0, -3.2, 0));   // ~18° vers le bas : horizon visible, spatules en bas du cadre
+      const h = skier.model.root.localToWorld(new THREE.Vector3(0, 1.32, 0.12));
+      target = h.clone().addScaledVector(head, -0.75); look = h.clone().addScaledVector(head, 10).add(new THREE.Vector3(0, -3.7, 0));   // ~18° vers le bas : horizon visible, spatules en bas du cadre
     } else {
       let dist = (camMode === 0 ? 8 + sp * 0.08 : 18) * camZoom;
       let height = (camMode === 0 ? 4.8 : 10) * camZoom;
@@ -539,6 +554,17 @@ function build(data: GameData) {
       updateChrono(dt);
     }
     skier.updateModel(dt);
+    {
+      const gy = hf.height(skier.pos.x, skier.pos.z);
+      const above = Math.max(0, skier.pos.y - gy);
+      blob.visible = skier.crashT <= 0 && above < 4;
+      blob.position.set(skier.pos.x, gy + 0.03, skier.pos.z);
+      const nv = hf.normal(skier.pos.x, skier.pos.z, { x: 0, y: 1, z: 0 });
+      blobN.set(nv.x, nv.y, nv.z);
+      blob.quaternion.setFromUnitVectors(blobUp, blobN).multiply(blobQ.setFromAxisAngle(blobUp, skier.yaw));
+      blobMat.uniforms.uK.value = 1 - Math.min(1, above / 3);
+      blob.scale.setScalar(1 + above * 0.25);
+    }
 
     // traces + gerbes
     const root = skier.model.root;

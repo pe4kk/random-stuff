@@ -46,6 +46,40 @@ async function fetchU16(name: string, count: number | null, onProgress: (n: numb
   return out;
 }
 
+/**
+ * Décodage RVBA exact d'un PNG. Un canvas 2D stocke les pixels prémultipliés par l'alpha : là où
+ * A = 0 (pas de bâtiment), il effaçait les canaux piste/forêt du masque. On passe donc par WebGL,
+ * sans prémultiplication, et on relit les octets bruts.
+ */
+async function decodeRGBA(name: string): Promise<ImageData> {
+  const blob = await (await fetch(BASE + name)).blob();
+  const bmp = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  const W = bmp.width, H = bmp.height;
+  const cv = document.createElement('canvas'); cv.width = 1; cv.height = 1;
+  const gl = cv.getContext('webgl2', { premultipliedAlpha: false });
+  if (!gl) {
+    // repli : canvas 2D (pistes moins exactes là où l'alpha est nul)
+    const c2 = document.createElement('canvas'); c2.width = W; c2.height = H;
+    const x = c2.getContext('2d', { willReadFrequently: true })!; x.drawImage(bmp, 0, 0);
+    return x.getImageData(0, 0, W, H);
+  }
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const px = new Uint8ClampedArray(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.deleteFramebuffer(fb); gl.deleteTexture(tex);
+  (gl.getExtension('WEBGL_lose_context'))?.loseContext();
+  bmp.close();
+  return new ImageData(px, W, H);
+}
+
 function loadImage(name: string): Promise<HTMLImageElement> {
   return new Promise((ok, ko) => {
     const im = new Image();
@@ -77,11 +111,7 @@ export async function loadAll(progress: (frac: number, label: string) => void): 
   const far = new Float32Array(fu.length);
   for (let i = 0; i < fu.length; i++) far[i] = fu[i] / 10;
 
-  const cv = document.createElement('canvas');
-  cv.width = maskImage.width; cv.height = maskImage.height;
-  const ctx = cv.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(maskImage, 0, 0);
-  const mask = ctx.getImageData(0, 0, cv.width, cv.height);
+  const mask = await decodeRGBA('core_mask.png');
 
   return { features, core, mid, far, mask, maskImage, midForest, trees };
 }

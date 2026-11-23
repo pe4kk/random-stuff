@@ -170,7 +170,12 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN; 
     float rt = dA.a;      // au loin : une seule projection suffit
   #endif
   float strata = 0.5 + 0.5 * sin(vWPos.y * 0.9 + rt * 5.0);
-  vec3 rock = mix(vec3(0.17, 0.16, 0.15), vec3(0.47, 0.44, 0.40), rt * 0.75 + strata * 0.25);
+  // roche alpine : gris chaud, strates et fissures, neige accrochée sur les vires
+  vec3 rock = mix(vec3(0.27, 0.24, 0.21), vec3(0.6, 0.56, 0.5), rt * 0.65 + strata * 0.35);
+  float crack = 1.0 - smoothstep(0.0, 0.12, abs(sin(vWPos.y * 2.1 + rt * 9.0 + vWPos.x * 0.3)));
+  rock *= 1.0 - 0.45 * crack;
+  float ledge = smoothstep(0.62, 0.8, rt + (0.45 - slope) * 0.9) * smoothstep(0.35, 0.65, strata);
+  rock = mix(rock, vec3(0.93, 0.95, 1.0), ledge * 0.85);
   col = mix(col, rock, gRock * (1.0 - gPiste));
   // forêt au loin : vert sombre tacheté de neige
   float fFade = 1.0;
@@ -199,7 +204,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN; 
   diffuseColor.rgb = col;
 }`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
-reflectedLight.indirectDiffuse *= vec3(0.80, 0.91, 1.18);`)
+reflectedLight.indirectDiffuse *= mix(vec3(0.80, 0.91, 1.18), vec3(0.98, 0.97, 1.02), gRock * (1.0 - gPiste));`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(0.93, 0.5, gPiste);
 roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
@@ -247,7 +252,7 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
 }
 #endif`);
   };
-  mat.customProgramCacheKey = () => 'snow6-' + kind;
+  mat.customProgramCacheKey = () => 'snow7-' + kind;
   return mat;
 }
 

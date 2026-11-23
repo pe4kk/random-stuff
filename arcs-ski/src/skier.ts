@@ -91,7 +91,7 @@ export class SkierModel {
       // ---- personnage articulé
       this.Lt = dm.thigh; this.Ls = dm.shin; this.ankleY = dm.ankle + 0.075;
       const rig = new SkinRig({
-        jacket: jc, jacket2: new THREE.Color(jc).multiplyScalar(0.55).getHex(),
+        jacket: jc, jacket2: new THREE.Color(jc).multiplyScalar(0.28).getHex(),
         pants: colors.pants ?? 0x1b1f2a, glove: 0x161616, skin: 0xd9a383,
       });
       this.rig = rig;
@@ -496,6 +496,6 @@ export class Skier {
     this.crouch += (crouchT - this.crouch) * Math.min(1, dt * 8);
     if (full) m.pose(this.crouch, -this.leanAngle, this.tuck, this.t, this.push, this.brake, this.plant, this.plantSide, this.crashT > 0 ? 1 : 0);
     // enfoncement dans la poudreuse
-    if (this.grounded && this.crashT <= 0) m.root.position.y -= 0.12 * (1 - this.onPiste) * this.sinkScale;
+    if (this.grounded && this.crashT <= 0) m.root.position.y -= 0.12 * Math.min(1, Math.max(0, (0.35 - this.onPiste) / 0.25)) * this.sinkScale;   // seulement en vraie poudreuse
   }
 }

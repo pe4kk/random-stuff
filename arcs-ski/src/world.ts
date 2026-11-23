@@ -27,7 +27,7 @@ export function makeBuildings(list: Building[], hf: HeightField): THREE.Group {
     }
   };
   const slabCol = new THREE.Color(0xe9edf3), railCol = new THREE.Color(0x4a3426);
-  const palette = [new THREE.Color(0x9a6e4c), new THREE.Color(0x7d5a3e), new THREE.Color(0xcfc4b0), new THREE.Color(0xa8977f), new THREE.Color(0x8a6446)];
+  const palette = [new THREE.Color(0xb8875e), new THREE.Color(0x9c7350), new THREE.Color(0xd8cdb8), new THREE.Color(0xbcaa90), new THREE.Color(0xa67b56)];
   const fascia = new THREE.Color(0x5a3e2a);
   list.forEach((b, bi) => {
     let pts = b.pts.slice();

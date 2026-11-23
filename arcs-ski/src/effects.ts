@@ -216,7 +216,10 @@ export class Spray {
           vec2 c = gl_PointCoord - 0.5; float d = length(c);
           float a = smoothstep(0.5, 0.1, d) * clamp(vL, 0.0, 1.0) * 0.7;
           if (a < 0.01) discard;
-          gl_FragColor = vec4(vec3(1.9, 1.95, 2.05), a); }`,
+          gl_FragColor = vec4(vec3(1.9, 1.95, 2.05), a);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
       transparent: true, depthWrite: false,
     });
     this.points = new THREE.Points(g, mat);
