@@ -83,7 +83,7 @@ export function makeSnowMaterial(kind: 'core' | 'mid' | 'far', mask: THREE.Textu
 varying vec3 vWPos; varying vec3 vWNorm; varying float vAO;
 uniform sampler2D uMask; uniform sampler2D uDetail; uniform sampler2D uGroom; uniform sampler2D uNormTex; uniform float uHalf; uniform vec2 uTreeFade; uniform vec3 uSunDir; uniform float uTime;
 ${NOISE}
-float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN;`)
+float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN; float gAcross; vec2 gDir; float gCordF; float gBandF; float gPack;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 uv = (vWPos.xz + uHalf) / (2.0 * uHalf);
@@ -111,7 +111,7 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN;`
   vec4 dB = vec4(0.0, 0.0, 0.0, low);
   float tint = dA.a * 0.4 + low * 0.6;
   gGround = 0.0; gEdge = 0.0;
-  float gPack = 0.0;
+  gPack = 0.0;
   #if KIND_CORE
     gPiste = smoothstep(0.35, 0.75, m.r);
     gEdge = smoothstep(0.1, 0.22, m.r) * (1.0 - smoothstep(0.26, 0.38, m.r));     // bourrelet de poudreuse
@@ -130,22 +130,28 @@ float gPiste; float gRock; float gForest; float gGround; float gEdge; vec3 gWN;`
     gGround = (1.0 - smoothstep(snowline - 140.0, snowline + 160.0, vWPos.y)) * smoothstep(0.25, 0.6, dB.a + vnoise(vWPos.xz / 90.0) * 0.3);
   #endif
   // poudreuse : blanc pur légèrement bleuté, variations douces
-  vec3 powder = vec3(0.94, 0.96, 1.0) * (0.95 + 0.07 * tint);
+  vec3 powder = vec3(0.96, 0.975, 1.0) * (0.96 + 0.05 * tint);
   // piste damée : plus mate et grise, bandes de dameuse (4,5 m) dans le sens de la pente + velours
   vec2 fall = normalize(wn.xz + vec2(1e-4));
   float across = dot(vWPos.xz, vec2(-fall.y, fall.x));
   #if KIND_CORE
     // bandes parallèles à l'axe de la piste (distance signée à la ligne OSM, calculée au chargement)
-    vec2 gt = texture2D(uGroom, uv).rg;
+    vec4 gt = texture2D(uGroom, uv);
     across = mix(across, gt.r, step(0.5, gt.g));
+    gDir = mix(vec2(-fall.y, fall.x), normalize(gt.ba + vec2(1e-5)), step(0.5, gt.g));
+  #else
+    gDir = vec2(-fall.y, fall.x);
   #endif
+  gAcross = across;
   float band = 0.5 + 0.5 * sin(across * 1.396 + dA.a * 2.0);
   // velours filtré : s'efface quand les stries deviennent plus fines qu'un pixel (pas de moiré)
   float cw = fwidth(across * 40.0 / 6.2832);
   float cord = mix(0.5 + 0.5 * sin(across * 40.0), 0.5, smoothstep(0.25, 0.7, cw));
   float bw = fwidth(across * 1.396 / 6.2832);
   band = mix(band, 0.5, smoothstep(0.3, 0.8, bw));
-  vec3 groomed = vec3(0.72, 0.77, 0.87) * (0.94 + 0.09 * band + 0.08 * cord + 0.04 * tint);
+  gCordF = 1.0 - smoothstep(0.25, 0.7, cw); gBandF = 1.0 - smoothstep(0.3, 0.8, bw);
+  // damé presque aussi blanc que la poudreuse : le velours se lit dans le relief (normales), pas dans la couleur
+  vec3 groomed = vec3(0.86, 0.9, 0.97) * (0.97 + 0.03 * band + 0.025 * cord + 0.03 * tint);
   vec3 col = mix(powder, groomed, gPiste);
   col = mix(col, groomed * vec3(0.9, 0.92, 0.96), gPack * 0.8);
   col = mix(col, vec3(1.02, 1.03, 1.05), gEdge * 0.85);
@@ -215,6 +221,9 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
   float rph = dot(vWPos.xz, wd) * 0.85 + n2.x * 6.0;
   float rip = cos(rph) * (1.0 - smoothstep(0.2, 0.6, fwidth(rph / 6.2832)));
   pert.xz += wd * rip * 0.18 * powderK * (1.0 - smoothstep(30.0, 300.0, d));
+  // velours de dameuse et bandes en relief : la lumière rasante dessine les stries
+  float cordH = cos(gAcross * 40.0) * 0.13 * gCordF * (1.0 - smoothstep(12.0, 70.0, d)) + cos(gAcross * 1.396) * 0.06 * gBandF * (1.0 - smoothstep(60.0, 220.0, d));
+  pert.xz += gDir * cordH * gPiste * (1.0 - gPack * 0.6) * (0.8 + 0.4 * n2.y);
   normal = normalize(normal + (viewMatrix * vec4(pert, 0.0)).xyz);
 }
 #endif`)
@@ -236,7 +245,7 @@ roughnessFactor = mix(roughnessFactor, 0.95, max(gRock, gGround));`)
 }
 #endif`);
   };
-  mat.customProgramCacheKey = () => 'snow4-' + kind;
+  mat.customProgramCacheKey = () => 'snow5-' + kind;
   return mat;
 }
 
@@ -452,7 +461,7 @@ export function makeGroomTexture(pistes: { pts: [number, number][]; area: boolea
         best[j * N + i] = dist;
         const signed = ((x - ax) * ez - (z - az) * ex) / L;    // distance à la droite, signée
         const o = (j * N + i) * 4;
-        d[o] = signed; d[o + 1] = 1;
+        d[o] = signed; d[o + 1] = 1; d[o + 2] = ez / L; d[o + 3] = -ex / L;
       }
     }
   }

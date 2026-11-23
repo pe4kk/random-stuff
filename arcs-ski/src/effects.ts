@@ -64,6 +64,7 @@ export class Tracks {
   mesh: THREE.Mesh;
   private pos: Float32Array;
   private alpha: Float32Array;
+  private side: Float32Array;
   private i = 0;
   private last: (THREE.Vector3 | null)[] = [];
   private geo: THREE.BufferGeometry;
@@ -71,6 +72,7 @@ export class Tracks {
   constructor(private N = 12000, private minStep = 0.6) {
     this.pos = new Float32Array(N * 4 * 3);
     this.alpha = new Float32Array(N * 4);
+    this.side = new Float32Array(N * 4 * 2);
     const across = new Float32Array(N * 4);
     const idx = new Uint32Array(N * 6);
     for (let k = 0; k < N; k++) {
@@ -83,35 +85,44 @@ export class Tracks {
     this.geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.geo.setAttribute('across', new THREE.BufferAttribute(across, 1));
     this.geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    // fusion multiplicative : la trace assombrit (creux) ou éclaircit (bourrelet) la neige déjà éclairée
+    // sillon en relief : profil creusé (fond tassé, parois, bourrelet) éclairé selon le soleil.
+    // Fusion : couleur = reflet ajouté + neige existante × ombrage (assombrit ET éclaircit, sans éclairage réel)
+    this.geo.setAttribute('sideV', new THREE.BufferAttribute(this.side, 2).setUsage(THREE.DynamicDrawUsage));
     const mat = new THREE.ShaderMaterial({
-      vertexShader: `#include <common>
-        #include <logdepthbuf_pars_vertex>
-        attribute float alpha; attribute float across; varying float vA; varying float vX; varying float vD;
-        void main(){ vA = alpha; vX = across; vec4 mv = modelViewMatrix * vec4(position,1.0); vD = -mv.z; gl_Position = projectionMatrix * mv;
-        #include <logdepthbuf_vertex>
-        }`,
-      fragmentShader: `#include <common>
-        #include <logdepthbuf_pars_fragment>
-        varying float vA; varying float vX; varying float vD;
+      uniforms: { uSun: { value: new THREE.Vector3(0.4, 0.6, 0.3).normalize() } },
+      vertexShader: `attribute float alpha; attribute float across; attribute vec2 sideV;
+        varying float vA; varying float vX; varying float vD; varying vec2 vS;
+        void main(){ vA = alpha; vX = across; vS = sideV; vec4 mv = modelViewMatrix * vec4(position,1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uSun;
+        varying float vA; varying float vX; varying float vD; varying vec2 vS;
         void main(){
-          #include <logdepthbuf_fragment>
-          float x = vX;
-          float groove = 1.0 - smoothstep(0.15, 0.75, abs(x + 0.15));
-          float rim = smoothstep(0.55, 0.85, x) * (1.0 - smoothstep(0.9, 1.0, x)) + smoothstep(-0.55, -0.85, x) * (1.0 - smoothstep(-0.9, -1.0, x)) * 0.5;
-          float k = vA * (1.0 - smoothstep(150.0, 450.0, vD));
-          vec3 mul = vec3(1.0) - vec3(0.42, 0.33, 0.2) * groove * k + vec3(0.12) * rim * k;
-          gl_FragColor = vec4(mul, 1.0);
+          float x = vX, ax = abs(x), sx = sign(x);
+          float k = vA * (1.0 - smoothstep(120.0, 420.0, vD));
+          // pente du profil : parois montantes vers l'extérieur, bourrelet qui redescend
+          float wall = smoothstep(0.12, 0.55, ax) * (1.0 - smoothstep(0.6, 0.85, ax));
+          float rim = smoothstep(0.8, 0.92, ax) * (1.0 - smoothstep(0.94, 1.0, ax));
+          float dz = sx * (wall * 0.75 - rim * 0.5);
+          vec3 n = normalize(vec3(-vS.x * dz, 1.0, -vS.y * dz));
+          float sunY = max(uSun.y, 0.25);
+          float shade = max(dot(n, uSun), 0.0) / sunY;
+          float bottom = 1.0 - smoothstep(0.15, 0.5, ax);
+          float mul = clamp(mix(1.0, shade, 0.75), 0.6, 1.0) * (1.0 - 0.08 * bottom);     // fond tassé un peu plus mat ; ombre bleutée douce
+          float add = max(shade - 1.0, 0.0) * 0.18;
+          mul = mix(1.0, mul, k); add *= k;
+          gl_FragColor = vec4(vec3(add) * vec3(0.95, 0.97, 1.0), mul);
         }`,
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
-      blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+      blendSrc: THREE.OneFactor, blendDst: THREE.SrcAlphaFactor,
+      blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     });
     this.mesh = new THREE.Mesh(this.geo, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1;
   }
+
+  setSun(d: THREE.Vector3) { ((this.mesh.material as THREE.ShaderMaterial).uniforms.uSun.value as THREE.Vector3).copy(d).normalize(); }
 
   reset() { this.last = []; }
 
@@ -142,6 +153,8 @@ export class Tracks {
       P[b + 6] = p.x - side.x * w; P[b + 7] = p.y + lift; P[b + 8] = p.z - side.z * w;
       P[b + 9] = p.x + side.x * w; P[b + 10] = p.y + lift; P[b + 11] = p.z + side.z * w;
       this.alpha.fill(strength, k * 4, k * 4 + 4);
+      const sl = Math.hypot(side.x, side.z) || 1;
+      for (let v = 0; v < 4; v++) { this.side[k * 8 + v * 2] = side.x / sl; this.side[k * 8 + v * 2 + 1] = side.z / sl; }
       prev.copy(p);
       this.dirtyLo = Math.min(this.dirtyLo, k); this.dirtyHi = Math.max(this.dirtyHi, k);
     }
@@ -155,6 +168,8 @@ export class Tracks {
     const pa = this.geo.attributes.position as THREE.BufferAttribute, aa = this.geo.attributes.alpha as THREE.BufferAttribute;
     pa.clearUpdateRanges(); aa.clearUpdateRanges();
     pa.addUpdateRange(this.dirtyLo * 12, (this.dirtyHi - this.dirtyLo + 1) * 12);
+    const sa = this.geo.attributes.sideV as THREE.BufferAttribute;
+    sa.clearUpdateRanges(); sa.addUpdateRange(this.dirtyLo * 8, (this.dirtyHi - this.dirtyLo + 1) * 8); sa.needsUpdate = true;
     aa.addUpdateRange(this.dirtyLo * 4, (this.dirtyHi - this.dirtyLo + 1) * 4);
     pa.needsUpdate = true; aa.needsUpdate = true;
     this.dirtyLo = Infinity; this.dirtyHi = -1;

@@ -84,7 +84,7 @@ function build(data: GameData) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.56;
+  renderer.toneMappingExposure = 0.6;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;   // ombres douces (plus coûteuses) seulement en qualité Haute
   $('game').appendChild(renderer.domElement);
@@ -150,6 +150,7 @@ function build(data: GameData) {
   // autres skieurs + traces déjà présentes sur les pistes
   const routes = buildRoutes(data.features.pistes, lifts, hf);
   const oldTracks = new Tracks(40000, 0.9); scene.add(oldTracks.mesh);
+  tracks.setSun(sunDir); oldTracks.setSun(sunDir);
   Crowd.pretrace(routes, hf, mask, forest, oldTracks, Math.min(60, routes.length * 3));
   const crowd = new Crowd(routes, hf, mask, forest, scene, 34, oldTracks);
 
