@@ -26,6 +26,8 @@ var features: Dictionary
 var lifts: Array = []
 var _piste_grid := {}
 var _msg_t := 0.0
+var audio: SkiAudio
+var _plant_prev := 1.0
 var camera: Camera3D
 var cam_mode := 0
 var cam_pos := Vector3.ZERO
@@ -72,6 +74,8 @@ func _ready() -> void:
 	spray = _make_spray()
 	add_child(spray)
 	_index_pistes()
+	audio = SkiAudio.new()
+	add_child(audio)
 	_inputs()
 	_build_ui()
 	camera = Camera3D.new()
@@ -201,8 +205,12 @@ func _process(dt: float) -> void:
 			acc += dt
 			while acc >= STEP:
 				skier.step(STEP, inp); acc -= STEP
+		if Input.is_action_just_pressed("mute"):
+			audio.toggle_mute(); _message("Son coupé" if audio.muted else "Son activé", 1.2)
 		for ev in skier.events:
-			if ev == "crash": _message(skier.crash_msg + "   (R : recommencer)", 2.5)
+			if ev == "crash":
+				_message(skier.crash_msg + "   (R : recommencer)", 2.5); audio.play("crash", 0.9)
+			if ev == "land": audio.play("land", clampf(skier.speed() / 15.0, 0.3, 1.0))
 			if ev == "edgewarn": _message("Attention : les carres décrochent !", 1.0)
 		skier.events.clear()
 		if not args.has("side"):
@@ -210,6 +218,9 @@ func _process(dt: float) -> void:
 			_update_camera(dt, false)
 		_update_snow_fx()
 		_update_hud(dt)
+		if skier.plant < _plant_prev - 0.5: audio.play("pole", 0.5)
+		_plant_prev = skier.plant
+		audio.update(dt, skier.speed(), skier.carve, skier.skid, skier.on_piste, skier.grounded, skier.crash_t > 0.0, frozen)
 	terrain.update(camera.position)
 	frames += 1
 	if args.has("shot") and frames == int(args.get("frames", "8")):
@@ -237,7 +248,7 @@ func _find_spawn() -> void:
 
 func _inputs() -> void:
 	var keys := {"left": [KEY_LEFT, KEY_A, KEY_Q], "right": [KEY_RIGHT, KEY_D], "tuck": [KEY_UP, KEY_W, KEY_Z], "brake": [KEY_DOWN, KEY_S],
-		"jump": [KEY_SPACE], "reset": [KEY_R], "camera": [KEY_C], "quit": [KEY_ESCAPE], "map": [KEY_M]}
+		"jump": [KEY_SPACE], "reset": [KEY_R], "camera": [KEY_C], "quit": [KEY_ESCAPE], "map": [KEY_M], "mute": [KEY_N]}
 	for act in keys:
 		if not InputMap.has_action(act): InputMap.add_action(act, 0.15)
 		for k in keys[act]:
@@ -378,7 +389,7 @@ func _build_ui() -> void:
 	var root := Control.new(); root.set_anchors_preset(Control.PRESET_FULL_RECT); root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cl.add_child(root)
 	hud = _label(15)       # rappel des commandes, en bas
-	hud.text = "←→ tourner · ↑ schuss · ↓ freiner · Espace saut · R recommencer · C caméra · molette zoom · M plan · Échap menu"
+	hud.text = "←→ tourner · ↑ schuss · ↓ freiner · Espace saut · R recommencer · C caméra · molette zoom · M plan · N son · Échap menu"
 	hud.set_anchors_preset(Control.PRESET_CENTER_BOTTOM); hud.position = Vector2(-330, -30); root.add_child(hud)
 	hud_piste = _label(24); hud_piste.set_anchors_preset(Control.PRESET_CENTER_TOP); hud_piste.position = Vector2(-120, 18); root.add_child(hud_piste)
 	hud_speed = _label(40); hud_speed.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT); hud_speed.position = Vector2(-260, -150)

@@ -26,13 +26,17 @@ Place nécessaire : environ 0,5 Go (Godot + projet + fichiers importés).
 | Sauter (maintenir puis relâcher) | Espace | A |
 | Recommencer en haut | R | |
 | Changer de caméra (poursuite, large, subjective) | C | |
-| Quitter | Échap | |
+| Zoom de la caméra | molette | |
+| Plan des pistes (clic sur un sommet : téléportation) | M | |
+| Couper / remettre le son | N | |
+| Menu (reprendre, recommencer, quitter) | Échap | |
 
 ## Données et licences
 
 - Relief : © IGN (RGE ALTI®) ; massifs lointains : Copernicus GLO-30 © DLR e.V. 2010-2014 et © Airbus Defence and Space GmbH 2014-2018, fourni dans le cadre de COPERNICUS par l'Union européenne et l'ESA.
 - Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL).
 - Textures de neige, de roche et de rameaux de sapin : Poly Haven (CC0).
+- Sons : synthétisés par `tools/make_sounds.py` (aucun enregistrement tiers).
 - Personnage : Quaternius, « Universal Base Characters » (CC0), habillé par `tools/clothe_skier.py`.
 
 ## Pour le développement
