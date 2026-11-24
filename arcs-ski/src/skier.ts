@@ -311,17 +311,20 @@ export class Skier {
       // virage : rayon de carving qui se resserre avec la prise de carre
       const absS = Math.abs(steer);
       const R = 38 - 27 * absS - 6 * this.brake;
-      let yawRate = -steer * (Math.max(Math.abs(vf), 0) / R);
-      yawRate += -steer * 1.9 * Math.max(0, 1 - speed / 9);            // pivot à basse vitesse
-      yawRate += -steer * this.brake * 1.2;                               // dérapage piloté
-      this.yaw += yawRate * dt;
-
       // forces (par unité de masse)
       const N = G * n.y + Math.max(0, this.compress) * 2;
-      _a.set(0, -G, 0).addScaledVector(n, G * n.y).multiplyScalar(SLOPE_BOOST);     // gravité tangentielle
       // adhérence latérale (carres)
       const powder = 1 - onP;
       const grip = (1.25 + 0.35 * absS) * (1 - 0.3 * powder) * (1 - 0.65 * this.brake) * N;
+      let yawRate = -steer * (Math.max(Math.abs(vf), 0) / R);
+      // virage limité par l'adhérence : à grande vitesse le rayon s'élargit tout seul (pas de dérapage
+      // ni de chute pour un simple coup de direction) ; pour tourner plus serré, il faut freiner
+      const avf = Math.abs(vf);
+      if (avf > 1) { const lim = (grip * 1.3) / avf; yawRate = Math.max(-lim, Math.min(lim, yawRate)); }
+      yawRate += -steer * 1.9 * Math.max(0, 1 - speed / 9);            // pivot à basse vitesse
+      yawRate += -steer * this.brake * 1.2;                               // dérapage piloté
+      this.yaw += yawRate * dt;
+      _a.set(0, -G, 0).addScaledVector(n, G * n.y).multiplyScalar(SLOPE_BOOST);     // gravité tangentielle
       let aLat = -vl * 9;
       const need = Math.abs(aLat);
       let skid = 0;
@@ -349,12 +352,12 @@ export class Skier {
       if (sgn !== 0 && sgn !== this.turnSign && speed > 2.5) { this.plant = 0; this.plantSide = sgn > 0 ? -1 : 1; }
       if (sgn !== 0) this.turnSign = sgn;
       // perte de carre : virage trop serré à grande vitesse
-      if (skid > 0.7 && speed > 17 && this.brake < 0.3) this.edgeLoss += dt; else this.edgeLoss = Math.max(0, this.edgeLoss - dt * 2);
+      if (skid > 0.85 && speed > 20 && this.brake < 0.3) this.edgeLoss += dt; else this.edgeLoss = Math.max(0, this.edgeLoss - dt * 3);
       // signe avant-coureur : vibration, gerbe et crissement avant la chute ; pas de chute sur les replats
-      if (this.edgeLoss > 0.15 && !this.warned) { this.warned = true; this.events.push('edgewarn'); }
+      if (this.edgeLoss > 0.5 && !this.warned) { this.warned = true; this.events.push('edgewarn'); }
       if (this.edgeLoss > 0.08) this.leanAngle += (Math.random() - 0.5) * 0.12;
       if (this.edgeLoss === 0) this.warned = false;
-      if (this.edgeLoss > 0.75 && n.y < 0.975) { this.edgeLoss = 0; this.warned = false; this.crash('Perte de carre !'); }
+      if (this.edgeLoss > 1.6 && n.y < 0.975) { this.edgeLoss = 0; this.warned = false; this.crash('Perte de carre !'); }
 
       // inclinaison visuelle = accélération latérale
       const latAcc = vf * yawRate;
