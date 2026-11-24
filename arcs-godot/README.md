@@ -38,7 +38,7 @@ Place nécessaire : environ 0,5 Go (Godot + projet + fichiers importés).
 - Pistes, remontées, bâtiments : © contributeurs OpenStreetMap (ODbL).
 - Textures de neige, de roche et de rameaux de sapin : Poly Haven (CC0).
 - Sons : synthétisés par `tools/make_sounds.py` (aucun enregistrement tiers).
-- Personnage : Quaternius, « Universal Base Characters » (CC0), habillé par `tools/clothe_skier.py`.
+- Personnage : MakeHuman / MPFB2 (assets système CC0), généré et habillé en tenue de ski par `tools/make_human.py` (Blender 4.2).
 
 ## Pour le développement
 

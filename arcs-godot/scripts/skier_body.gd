@@ -1,4 +1,4 @@
-## Skieur articulé : personnage CC0 habillé (voir tools/clothe_skier.py), animé chaque image par un
+## Skieur articulé : personnage réaliste MakeHuman (CC0) en tenue de ski (voir tools/make_human.py), animé chaque image par un
 ## squelette « pilote » calculé depuis la physique (flexion, angulation, schuss, chasse-neige, planté de bâton)
 ## puis recopié sur les os : visée des membres et IK des jambes vers les chaussures fixées aux skis.
 ## Repère du skieur : +X gauche, +Y haut, +Z avant (identique à l'espace du squelette importé).
@@ -14,33 +14,55 @@ var skis: Array[Node3D] = []
 var poles: Array[Node3D] = []
 var cloth: ShaderMaterial
 var _curl := {}
+var m2s := Transform3D()        # repère du skieur -> espace du squelette
+var meshes: Array[MeshInstance3D] = []
 
-func _init(jacket := Color(0.78, 0.09, 0.1), pants := Color(0.06, 0.07, 0.1)) -> void:
-	var sc: Node3D = load("res://models/skier.gltf").instantiate()
+func _init(jacket := Color(0.72, 0.07, 0.09), pants := Color(0.05, 0.055, 0.07)) -> void:
+	var sc: Node3D = load("res://models/human.glb").instantiate()
 	add_child(sc)
 	sk = sc.find_children("*", "Skeleton3D", true, false)[0]
-	mesh = sc.find_children("*", "MeshInstance3D", true, false)[0]
 	for i in sk.get_bone_count():
 		bi[sk.get_bone_name(i)] = i
 		rest[sk.get_bone_name(i)] = sk.get_bone_global_rest(i)
-	cloth = ShaderMaterial.new()
-	cloth.shader = load("res://shaders/skier_cloth.gdshader")
-	cloth.set_shader_parameter("jacket", jacket)
-	cloth.set_shader_parameter("jacket2", jacket * 0.32)
-	cloth.set_shader_parameter("pants", pants)
-	mesh.material_override = cloth
-	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	var P := func(n: String) -> Vector3: return (rest[n] as Transform3D).origin
+	# passage espace squelette -> repère du modèle : déduit des poses de liaison du skinning
+	# (le maillage est recalé par elles ; le squelette importé est décalé d'environ 1 m)
+	var t := Transform3D()
+	for mi in sc.find_children("*", "MeshInstance3D", true, false):
+		var skin: Skin = mi.skin
+		if skin == null: continue
+		for k in skin.get_bind_count():
+			if skin.get_bind_name(k) == "pelvis":
+				var rest_in_mesh := skin.get_bind_pose(k).affine_inverse()
+				t = (mi as Node3D).transform * rest_in_mesh * (rest["pelvis"] as Transform3D).affine_inverse()
+				break
+		if t != Transform3D(): break
+	m2s = t.affine_inverse()
+	var mat_for := {}
+	for nm in ["Veste", "Pantalon", "Gants"]:
+		var m := ShaderMaterial.new()
+		m.shader = load("res://shaders/ski_wear.gdshader")
+		m.set_shader_parameter("part", ["Veste", "Pantalon", "Gants"].find(nm))
+		m.set_shader_parameter("main_color", jacket if nm == "Veste" else pants)
+		m.set_shader_parameter("accent", Color(0.05, 0.06, 0.08) if nm == "Veste" else Color(0.55, 0.57, 0.6))
+		mat_for[nm] = m
+	for mi in sc.find_children("*", "MeshInstance3D", true, false):
+		meshes.append(mi)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		for nm in mat_for:
+			if String(mi.name).begins_with(nm): mi.material_override = mat_for[nm]
+	cloth = mat_for["Veste"]
+	var P := func(nb: String) -> Vector3: return t * (rest[nb] as Transform3D).origin
 	var pelvis: Vector3 = P.call("pelvis")
-	var aabb := mesh.get_aabb()
-	var head_j: Vector3 = P.call("Head")
-	var top := aabb.position.y + aabb.size.y
+	var head_j: Vector3 = P.call("head")
+	var top := head_j.y + 0.2
+	for mi in meshes:
+		if String(mi.name) == "Human": top = (mi.transform * mi.get_aabb()).end.y
 	dims = {
 		"thigh": P.call("calf_l").distance_to(P.call("thigh_l")), "shin": P.call("foot_l").distance_to(P.call("calf_l")),
 		"upper": P.call("lowerarm_l").distance_to(P.call("upperarm_l")), "fore": P.call("hand_l").distance_to(P.call("lowerarm_l")),
-		"shoulder": P.call("upperarm_l") - pelvis, "head": Vector3(0, (head_j.y + top) / 2.0 - pelvis.y, head_j.z - pelvis.z + 0.02),
-		"ankle": P.call("foot_l").y - aabb.position.y, "foot_len": Vector2(P.call("ball_l").x - P.call("foot_l").x, P.call("ball_l").z - P.call("foot_l").z).length(),
-		"foot_drop": P.call("foot_l").y - P.call("ball_l").y, "head_r": (top - head_j.y) / 2.0 + 0.01,
+		"shoulder": P.call("upperarm_l") - pelvis, "head": Vector3(0, (head_j.y + top) / 2.0 + 0.035 - pelvis.y, head_j.z - pelvis.z + 0.01),
+		"ankle": P.call("foot_l").y + 0.02, "foot_len": Vector2(P.call("ball_l").x - P.call("foot_l").x, P.call("ball_l").z - P.call("foot_l").z).length(),
+		"foot_drop": P.call("foot_l").y - P.call("ball_l").y, "head_r": (top - head_j.y) * 0.86,
 	}
 	_find_curls()
 	_gear()
@@ -94,14 +116,15 @@ func _gear() -> void:
 		var bs := MeshInstance3D.new(); var bsm := CylinderMesh.new(); bsm.top_radius = 0.045; bsm.bottom_radius = 0.045; bsm.height = 0.012; bs.mesh = bsm; bs.material_override = grip_m; bs.position.y = -1.07; pole.add_child(bs)
 		add_child(pole); poles.append(pole)
 	# casque et masque, fixés à l'os de la tête
-	var att := BoneAttachment3D.new(); att.bone_name = "Head"; sk.add_child(att)
+	var att := BoneAttachment3D.new(); att.bone_name = "head"; sk.add_child(att)
 	var hs := Node3D.new(); att.add_child(hs)
-	var hr: Transform3D = rest["Head"]
-	var want: Vector3 = (rest["pelvis"] as Transform3D).origin + dims.head
-	hs.transform = Transform3D(hr.basis.inverse(), hr.basis.inverse() * (want - hr.origin))
+	var hr: Transform3D = rest["head"]
+	var s2m := m2s.affine_inverse()
+	var want: Vector3 = m2s * (s2m * (rest["pelvis"] as Transform3D).origin + dims.head)
+	hs.transform = Transform3D(hr.basis.inverse() * m2s.basis, hr.basis.inverse() * (want - hr.origin))
 	hs.scale = Vector3.ONE * (dims.head_r / 0.118)
-	var helmet := MeshInstance3D.new(); var hm := SphereMesh.new(); hm.radius = 0.128; hm.height = 0.2; hm.is_hemisphere = true
-	helmet.mesh = hm; helmet.material_override = _mat(Color(0.93, 0.94, 0.96), 0.22, 0.05); helmet.position = Vector3(0, 0.012, -0.008); hs.add_child(helmet)
+	var helmet := MeshInstance3D.new(); var hm := SphereMesh.new(); hm.radius = 0.128; hm.height = 0.22; hm.is_hemisphere = true
+	helmet.mesh = hm; helmet.material_override = _mat(Color(0.93, 0.94, 0.96), 0.22, 0.05); helmet.position = Vector3(0, -0.005, -0.01); helmet.scale = Vector3(1.0, 1.0, 1.12); hs.add_child(helmet)
 	var gog := MeshInstance3D.new(); var gc := CylinderMesh.new(); gc.top_radius = 0.123; gc.bottom_radius = 0.123; gc.height = 0.058; gc.cap_top = false; gc.cap_bottom = false
 	gog.mesh = gc; var gmat := _mat(Color(1.0, 0.55, 0.1), 0.05, 0.9); gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	gog.material_override = gmat; gog.position = Vector3(0, -0.012, 0.004); gog.scale = Vector3(1, 1, 1.02); hs.add_child(gog)
@@ -191,7 +214,12 @@ func pose(crouch: float, lean: float, tuck: float, t: float, push: float, brake:
 		var wr_t := lo_t * Transform3D(_rx(1.3 + tuck * 0.95 - swing * 0.7 - pl * 0.9), Vector3(0, -dims.fore, 0))
 		elbow.append(lo_t.origin); wrist.append(wr_t.origin); upper_b.append(up_t.basis); lower_b.append(lo_t.basis)
 		poles[s].transform = wr_t * Transform3D(_rz(-sg * 0.12), Vector3.ZERO)
-	# ---- recopie sur le squelette
+	# ---- recopie sur le squelette (pilote exprimé dans le repère du modèle -> espace squelette)
+	hips_t = m2s * hips_t; torso_t = m2s * torso_t; head_t = m2s * head_t
+	for s in 2:
+		ski_t[s] = m2s * (ski_t[s] as Transform3D)
+		elbow[s] = m2s * (elbow[s] as Vector3); wrist[s] = m2s * (wrist[s] as Vector3)
+		upper_b[s] = m2s.basis * (upper_b[s] as Basis); lower_b[s] = m2s.basis * (lower_b[s] as Basis)
 	var L := func(x: String) -> String: return x + "_l"
 	var R := func(x: String) -> String: return x + "_r"
 	var p_par := sk.get_bone_parent(bi["pelvis"])
@@ -205,7 +233,7 @@ func pose(crouch: float, lean: float, tuck: float, t: float, push: float, brake:
 	_set_q("spine_02", Basis(qh.slerp(qt, 0.75)) * (rest["spine_02"] as Transform3D).basis)
 	_set_q("spine_03", Basis(qt) * (rest["spine_03"] as Transform3D).basis)
 	_set_q("neck_01", Basis(qt.slerp(qhd, 0.5)) * (rest["neck_01"] as Transform3D).basis)
-	_set_q("Head", Basis(qhd) * (rest["Head"] as Transform3D).basis)
+	_set_q("head", Basis(qhd) * (rest["head"] as Transform3D).basis)
 	for s in 2:
 		var side: Callable = L if s == 1 else R          # bras 1 = gauche (+X)
 		_aim(side.call("upperarm"), side.call("lowerarm"), elbow[s], Vector3.FORWARD, (upper_b[s] as Basis) * Vector3.FORWARD)
