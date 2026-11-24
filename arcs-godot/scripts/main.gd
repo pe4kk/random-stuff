@@ -205,6 +205,9 @@ func _process(dt: float) -> void:
 			acc += dt
 			while acc >= STEP:
 				skier.step(STEP, inp); acc -= STEP
+		if Input.is_action_just_pressed("fullscreen"):
+			var w := get_window()
+			w.mode = Window.MODE_WINDOWED if w.mode == Window.MODE_FULLSCREEN or w.mode == Window.MODE_EXCLUSIVE_FULLSCREEN else Window.MODE_FULLSCREEN
 		if Input.is_action_just_pressed("mute"):
 			audio.toggle_mute(); _message("Son coupé" if audio.muted else "Son activé", 1.2)
 		for ev in skier.events:
@@ -248,7 +251,7 @@ func _find_spawn() -> void:
 
 func _inputs() -> void:
 	var keys := {"left": [KEY_LEFT, KEY_A, KEY_Q], "right": [KEY_RIGHT, KEY_D], "tuck": [KEY_UP, KEY_W, KEY_Z], "brake": [KEY_DOWN, KEY_S],
-		"jump": [KEY_SPACE], "reset": [KEY_R], "camera": [KEY_C], "quit": [KEY_ESCAPE], "map": [KEY_M], "mute": [KEY_N]}
+		"jump": [KEY_SPACE], "reset": [KEY_R], "camera": [KEY_C], "quit": [KEY_ESCAPE], "map": [KEY_M], "mute": [KEY_N], "fullscreen": [KEY_F11]}
 	for act in keys:
 		if not InputMap.has_action(act): InputMap.add_action(act, 0.15)
 		for k in keys[act]:

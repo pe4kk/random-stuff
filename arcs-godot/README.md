@@ -29,6 +29,7 @@ Place nécessaire : environ 0,5 Go (Godot + projet + fichiers importés).
 | Zoom de la caméra | molette | |
 | Plan des pistes (clic sur un sommet : téléportation) | M | |
 | Couper / remettre le son | N | |
+| Plein écran / fenêtre | F11 | |
 | Menu (reprendre, recommencer, quitter) | Échap | |
 
 ## Données et licences
