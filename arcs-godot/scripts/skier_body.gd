@@ -123,7 +123,7 @@ func _gear() -> void:
 	var want: Vector3 = m2s * (s2m * (rest["pelvis"] as Transform3D).origin + dims.head)
 	hs.transform = Transform3D(hr.basis.inverse() * m2s.basis, hr.basis.inverse() * (want - hr.origin))
 	hs.scale = Vector3.ONE * (dims.head_r / 0.118)
-	var helmet := MeshInstance3D.new(); var hm := SphereMesh.new(); hm.radius = 0.128; hm.height = 0.22; hm.is_hemisphere = true
+	var helmet := MeshInstance3D.new(); var hm := SphereMesh.new(); hm.radius = 0.128; hm.height = 0.135; hm.is_hemisphere = true
 	helmet.mesh = hm; helmet.material_override = _mat(Color(0.93, 0.94, 0.96), 0.22, 0.05); helmet.position = Vector3(0, -0.005, -0.01); helmet.scale = Vector3(1.0, 1.0, 1.12); hs.add_child(helmet)
 	var gog := MeshInstance3D.new(); var gc := CylinderMesh.new(); gc.top_radius = 0.123; gc.bottom_radius = 0.123; gc.height = 0.058; gc.cap_top = false; gc.cap_bottom = false
 	gog.mesh = gc; var gmat := _mat(Color(1.0, 0.55, 0.1), 0.05, 0.9); gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
