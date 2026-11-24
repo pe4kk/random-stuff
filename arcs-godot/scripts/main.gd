@@ -302,9 +302,23 @@ func _update_camera(dt: float, snap: bool) -> void:
 	cam_dir = want if snap else cam_dir.lerp(want, minf(1.0, dt * 2.5)).normalized()
 	var target: Vector3
 	var look: Vector3
+	body.set_first_person(cam_mode == 2 and skier.crash_t <= 0.0)
+	camera.near = 0.04 if cam_mode == 2 else 0.3
 	if cam_mode == 2:
-		target = p + Vector3(0, 1.32, 0) - head * 0.75
-		look = target + head * 10.0 + Vector3(0, -3.7, 0)
+		# aux yeux du skieur : suit la tête (flexion, inclinaison), vibre avec la vitesse
+		var eye := body.eye_position()
+		var shake := minf(1.0, sp / 25.0) * 0.012
+		eye += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * shake
+		# regard le long de la pente, un peu vers le bas (spatules en bas de l'écran), roulis modéré dans les virages
+		var bb := body.global_transform.basis
+		var fwd := bb.z.normalized()
+		var upv := bb.y.normalized()
+		var tilt := bb.x * (-skier.lean * 0.3)
+		cam_pos = eye
+		camera.position = eye
+		camera.look_at(eye + fwd * 10.0 - upv * 4.6, (Vector3.UP * 0.6 + upv * 0.4 + tilt).normalized())
+		camera.fov = lerpf(camera.fov, 86.0 + minf(8.0, sp * 0.25), 1.0 if snap else minf(1.0, dt * 2.0))
+		return
 	else:
 		var dist := ((8.0 + sp * 0.08) if cam_mode == 0 else 18.0) * cam_zoom
 		var height := (4.8 if cam_mode == 0 else 10.0) * cam_zoom

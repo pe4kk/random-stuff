@@ -16,6 +16,7 @@ var cloth: ShaderMaterial
 var _curl := {}
 var m2s := Transform3D()        # repère du skieur -> espace du squelette
 var meshes: Array[MeshInstance3D] = []
+var head_socket: Node3D
 
 func _init(jacket := Color(0.72, 0.07, 0.09), pants := Color(0.05, 0.055, 0.07)) -> void:
 	var sc: Node3D = load("res://models/human.glb").instantiate()
@@ -118,6 +119,7 @@ func _gear() -> void:
 	# casque et masque, fixés à l'os de la tête
 	var att := BoneAttachment3D.new(); att.bone_name = "head"; sk.add_child(att)
 	var hs := Node3D.new(); att.add_child(hs)
+	head_socket = hs
 	var hr: Transform3D = rest["head"]
 	var s2m := m2s.affine_inverse()
 	var want: Vector3 = m2s * (s2m * (rest["pelvis"] as Transform3D).origin + dims.head)
@@ -180,6 +182,18 @@ static func _rx(a: float) -> Basis: return Basis(Vector3.RIGHT, a)
 static func _rz(a: float) -> Basis: return Basis(Vector3.BACK, a)
 
 ## crouch 0..1, lean (rad), tuck 0..1, t (s), push, brake, plant 0..1, plant_side -1/1, crash 0/1
+## vue subjective : tête, casque et veste masqués (la caméra est dedans) ; on garde jambes, gants, bâtons et skis
+func set_first_person(on: bool) -> void:
+	head_socket.visible = not on
+	for mi in meshes:
+		if String(mi.name).begins_with("Human") or String(mi.name).begins_with("Veste"): mi.visible = not on
+
+## position des yeux (repère monde)
+func eye_position() -> Vector3:
+	# articulation de la tête (espace squelette -> repère du skieur), puis yeux un peu au-dessus et devant
+	var h := m2s.affine_inverse() * sk.get_bone_global_pose(bi["head"]).origin
+	return global_transform * (h + Vector3(0, 0.08, 0.06))
+
 func pose(crouch: float, lean: float, tuck: float, t: float, push: float, brake: float, plant: float, plant_side: int, crash: float) -> void:
 	var a := 0.42 + crouch * 0.6 + tuck * 0.45
 	var lt: float = dims.thigh
