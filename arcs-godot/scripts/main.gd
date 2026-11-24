@@ -9,7 +9,8 @@ var terrain: Terrain
 var mask: Mask
 var forest: Forest
 var skier: Skier
-var body: Node3D
+var body: SkierBody
+var crouch := 0.2
 var hud: Label
 var camera: Camera3D
 var cam_mode := 0
@@ -50,7 +51,7 @@ func _ready() -> void:
 	skier = Skier.new(core, mask, forest)
 	_find_spawn()
 	skier.place(spawn.x, spawn.z, spawn_yaw)
-	body = _placeholder_skier()
+	body = SkierBody.new()
 	add_child(body)
 	_inputs()
 	var cl := CanvasLayer.new(); add_child(cl)
@@ -78,7 +79,13 @@ func _ready() -> void:
 			skier.step(STEP, {"steer": sin(tsim * 0.9) * 0.6, "tuck": 0.0, "brake": 0.0, "push": 0.0, "jump": false})
 			tsim += STEP
 		if args.has("cammode"): cam_mode = int(args["cammode"])
+		_update_body(1.0)
 		_update_camera(1.0, true)
+		if args.has("side"):
+			var hd := Vector3(sin(skier.yaw), 0, cos(skier.yaw))
+			var sd := Vector3(hd.z, 0, -hd.x)
+			camera.position = skier.pos + sd * 3.2 + hd * 1.8 + Vector3(0, 1.1, 0)
+			camera.look_at(skier.pos + Vector3(0, 0.8, 0))
 	terrain.update(camera.position)
 
 func _vec(s: String) -> Vector3:
@@ -165,8 +172,9 @@ func _process(dt: float) -> void:
 			while acc >= STEP:
 				skier.step(STEP, inp); acc -= STEP
 		skier.events.clear()
-		_update_body(dt)
-		_update_camera(dt, false)
+		if not args.has("side"):
+			_update_body(dt)
+			_update_camera(dt, false)
 		hud.text = "%d km/h   ·   %d m" % [roundi(skier.speed() * 3.6), roundi(skier.pos.y)]
 		if skier.crash_t > 0.0: hud.text += "   ·   " + skier.crash_msg + "  (R : recommencer)"
 	terrain.update(camera.position)
@@ -226,9 +234,15 @@ func _update_body(dt: float) -> void:
 	fwd = (fwd - up * fwd.dot(up)).normalized()
 	var left := up.cross(fwd)
 	var b := Basis(left, up, fwd)
-	b = b * Basis(Vector3(0, 0, 1), -skier.lean)
-	if skier.crash_t > 0.0: b = b * Basis.from_euler(skier.tumble)
-	body.global_transform = Transform3D(b, skier.pos)
+	var p := skier.pos
+	if skier.crash_t > 0.0:
+		b = b * Basis.from_euler(skier.tumble); p.y += 0.3
+	elif skier.grounded and skier.on_piste < 0.35:
+		p.y -= 0.12 * clampf((0.35 - skier.on_piste) / 0.25, 0.0, 1.0)     # enfoncé en vraie poudreuse
+	body.global_transform = Transform3D(b, p)
+	var ct := 0.15 + skier.carve * 0.35 + maxf(0.0, -skier.compress) * 0.6 + maxf(0.0, skier.compress) * 0.5 + (0.0 if skier.grounded else 0.25)
+	crouch += (ct - crouch) * minf(1.0, dt * 8.0)
+	body.pose(crouch, -skier.lean, skier.tuck, skier.t, skier.push, skier.brake, skier.plant, skier.plant_side, 1.0 if skier.crash_t > 0.0 else 0.0)
 
 func _update_camera(dt: float, snap: bool) -> void:
 	var p := skier.pos
